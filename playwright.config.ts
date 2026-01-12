@@ -14,7 +14,7 @@ export default defineConfig({
   ],
 
   use: {
-    headless,
+    headless: !!process.env.CI,
     launchOptions: { slowMo: 400 },
     baseURL: BASE_URL || undefined,
     trace: 'on-first-retry',

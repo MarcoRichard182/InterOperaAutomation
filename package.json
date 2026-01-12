@@ -13,8 +13,8 @@
 
     "clear:logs": "node scripts/clear-logs.js",
 
-    "test:dev": "cross-env TARGET_ENV=dev CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.dev -- playwright test --workers=1",
-    "test:prod": "cross-env TARGET_ENV=prod CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.prod -- playwright test --workers=1",
+    "test:dev": "cross-env TARGET_ENV=dev CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.ci -e .env.dev -- playwright test --workers=1 tests/solutions",
+    "test:prod": "cross-env TARGET_ENV=prod CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.ci -e .env.prod -- playwright test --workers=1 tests/solutions",
 
     "test:all": "node scripts/test-all.js"
   },
