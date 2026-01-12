@@ -15,7 +15,7 @@ const SOLUTION_NAME = 'Sales & Projects';
 const MODULES: Module[] = [
   { name: 'Sales & Strategic Partnerships', panelName: 'Sales & Strategic Partnerships', href: '/smm/sales-strategic-partnership', urlMatches: /\/smm\/sales-strategic-partnership(?:[/?#]|$)/i },
   // cross-domain: app.operax... (no reliable relative href)
-  { name: 'Project Management', panelName: 'Project Management', urlMatches: /\/\/app\.operax\.interopera\.co\/smm\/deals(?:[/?#]|$)/i },
+  { name: 'Project Management', panelName: 'Project Management', href: '/smm/deals', urlMatches: /\/\/app\.operax\.interopera\.co\/smm\/deals(?:[/?#]|$)/i },
   { name: 'Product Management', panelName: 'Product Management', href: '/smm/products', urlMatches: /\/smm\/products(?:[/?#]|$)/i },
 ];
 
