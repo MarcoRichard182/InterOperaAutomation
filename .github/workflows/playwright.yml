@@ -4,6 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  schedule:
+    # Weekdays (Mon-Fri) at 08:00, 12:00, 16:00 GMT+8  => 00:00, 04:00, 08:00 UTC
+    - cron: "0 0,4,8 * * 1-5"
+    # Weekends (Sat,Sun) at 12:00 GMT+8 => 04:00 UTC
+    - cron: "0 4 * * 0,6"
 
 jobs:
   playwright:
