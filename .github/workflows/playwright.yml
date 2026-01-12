@@ -3,11 +3,11 @@ name: Playwright Checks
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    # Weekdays (Mon–Fri) at 08:00, 12:00, 16:00 GMT+8  => 00:00, 04:00, 08:00 UTC
+    # Weekdays (Mon-Fri) at 08:00, 12:00, 16:00 GMT+8  => 00:00, 04:00, 08:00 UTC
     - cron: "0 0,4,8 * * 1-5"
-    # Weekends (Sat, Sun) at 12:00 GMT+8 => 04:00 UTC
+    # Weekends (Sat,Sun) at 12:00 GMT+8 => 04:00 UTC
     - cron: "0 4 * * 0,6"
 
 jobs:
@@ -33,26 +33,19 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run tests (${{ matrix.env }})
+      - name: Create CI env file (${{ matrix.env }})
+        shell: bash
         run: |
-          # Pick env file secret content and write to temp .env
           if [ "${{ matrix.env }}" = "dev" ]; then
-            echo "${{ secrets.ENVDEV }}" > .env.ci
+            printf "%s" "${{ secrets.ENVDEV }}" > .env.ci
           else
-            echo "${{ secrets.ENVPROD }}" > .env.ci
+            printf "%s" "${{ secrets.ENVPROD }}" > .env.ci
           fi
 
-          # Export env vars from .env.ci into this step
-          set -a
-          source .env.ci
-          set +a
-
-          # Run tests
-          if [ "${{ matrix.env }}" = "dev" ]; then
-            npm run test:dev -- tests/solutions
-          else
-            npm run test:prod -- tests/solutions
-          fi
+      - name: Run tests (${{ matrix.env }})
+        shell: bash
+        run: |
+          npx dotenv -e .env.ci -- npm run test:${{ matrix.env }} -- tests/solutions
 
       - name: Upload Playwright report
         if: always()
