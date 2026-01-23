@@ -10,13 +10,13 @@
     "debug": "playwright test --debug",
     "report": "playwright show-report",
     "install:browsers": "playwright install --with-deps",
-
     "clear:logs": "node scripts/clear-logs.js",
-
     "test:dev": "cross-env TARGET_ENV=dev CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.ci -e .env.dev -- playwright test --workers=1 tests/solutions",
     "test:prod": "cross-env TARGET_ENV=prod CLEAR_LOGS=1 node scripts/clear-logs.js && npx dotenv -e .env.ci -e .env.prod -- playwright test --workers=1 tests/solutions",
-
-    "test:all": "node scripts/test-all.js"
+    "test:all": "node scripts/test-all.js",
+    "test:dev:combined": "node scripts/run-combined.js dev",
+    "test:prod:combined": "node scripts/run-combined.js prod",
+    "test:all:combined": "npm run test:dev:combined ; npm run test:prod:combined"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
@@ -24,6 +24,7 @@
     "dotenv-cli": "^11.0.0",
     "form-data": "^4.0.4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "engines": {

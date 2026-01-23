@@ -3,6 +3,7 @@ import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
 
+
 type Module = {
   name: string;
   panelName: string;
@@ -18,6 +19,56 @@ const MODULES: Module[] = [
   { name: 'E-Mobility', panelName: 'E-Mobility', href: '/ri/emobility', urlMatches: /\/ri\/emobility(?:[/?#]|$)/i },
 ];
 
+function pushAllMissingAccess(
+  rows: MenuCheckRow[],
+  solutionName: string,
+  modules: Module[],
+  detail = `No access / menu not visible for "${solutionName}" (likely permissions).`,
+) {
+  for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
+  for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
+}
+
+// ✅ FIX: make openSolutionPanel take solutionName + hint so it's not "undefined" / wrong-args
+// async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
+//   await waitForAppIdle(page);
+
+//   const solRx = new RegExp(`^\\s*${escRx(solutionName)}\\s*$`, 'i');
+//   const candidates = [
+//     page.getByRole('button', { name: solRx }).first(),
+//     page.getByRole('link', { name: solRx }).first(),
+//     page.locator('button').filter({ hasText: solRx }).first(),
+//     page.locator('a').filter({ hasText: solRx }).first(),
+//     page.getByText(solRx).first(),
+//   ];
+
+//   const sol = await firstVisibleLocator(candidates as any, 2500);
+//   if (!sol) throw new Error(`Side menu "${solutionName}" not found (maybe permissions)`);
+
+//   await sol.scrollIntoViewIfNeeded().catch(() => {});
+//   await sol.click({ force: true });
+
+//   const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
+//   await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
+// }
+
+async function ensureSolutionPanelOrMarkAll(
+  page: Page,
+  rows: MenuCheckRow[],
+  solutionName: string,
+  modules: Module[],
+): Promise<boolean> {
+  try {
+    const hint = modules[0]?.panelName || modules[0]?.name || solutionName;
+    await openSolutionPanel(page, solutionName, hint);
+    return true;
+  } catch (e: any) {
+    pushAllMissingAccess(rows, solutionName, modules, e?.message || String(e));
+    return false;
+  }
+}
+
+
 function escRx(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -28,10 +79,10 @@ function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
 
-async function openSolutionPanel(page: Page) {
+async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
   await waitForAppIdle(page);
 
-  const solRx = new RegExp(`^\\s*${escRx(SOLUTION_NAME)}\\s*$`, 'i');
+  const solRx = new RegExp(`^\\s*${escRx(solutionName)}\\s*$`, 'i');
   const candidates = [
     page.getByRole('button', { name: solRx }).first(),
     page.getByRole('link', { name: solRx }).first(),
@@ -41,15 +92,15 @@ async function openSolutionPanel(page: Page) {
   ];
 
   const sol = await firstVisibleLocator(candidates as any, 2500);
-  if (!sol) throw new Error(`Side menu "${SOLUTION_NAME}" not found`);
+  if (!sol) throw new Error(`Side menu "${solutionName}" not found (maybe permissions)`);
 
   await sol.scrollIntoViewIfNeeded().catch(() => {});
   await sol.click({ force: true });
 
-  // wait for one known module to appear
-  const hint = page.getByText(new RegExp(escRx(MODULES[0].panelName), 'i')).first();
-  await expect(hint, 'Solution panel did not open / module list not visible').toBeVisible({ timeout: 10_000 });
+  const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
+  await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
 }
+
 
 async function clickModuleFromPanel(page: Page, panelName: string) {
   const rx = new RegExp(`^\\s*${escRx(panelName)}\\s*$`, 'i');
@@ -122,12 +173,14 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
 
     try {
       await login(page);
-
+      const ok = await ensureSolutionPanelOrMarkAll(page, rows, SOLUTION_NAME, MODULES);
+      if (!ok) return;
       // SIDE
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
-          await openSolutionPanel(page);
+          await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
+
           await clickModuleFromPanel(page, mod.panelName);
           await assertLoaded(page, mod);
           rows.push({ label, status: 'PASS' });
@@ -138,7 +191,8 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
 
       // TOP (ensure we're in /ri first)
       if (!/\/ri\//i.test(page.url())) {
-        await openSolutionPanel(page);
+        await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
+
         await clickModuleFromPanel(page, MODULES[0].panelName);
         await assertLoaded(page, MODULES[0]);
       }
@@ -155,7 +209,7 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
       }
 
       // EXTRA detection (only for /ri links)
-      await openSolutionPanel(page);
+      await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
       const discovered = await discoverLinks(page);
       const expected = new Set(MODULES.map((m) => m.href).filter(Boolean) as string[]);
       const extras = discovered.filter((d) => d.href.includes('/ri') && !expected.has(d.href));

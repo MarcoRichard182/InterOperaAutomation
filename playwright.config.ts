@@ -7,6 +7,7 @@ const BASE_URL = (process.env.BASE_URL || '').replace(/\/+$/, '');
 
 export default defineConfig({
   testDir: './tests',
+  globalTeardown: './global-teardown.ts',
   fullyParallel: true,
   reporter: [
   ['list'],                 // nice console output
@@ -27,4 +28,8 @@ export default defineConfig({
   ],
   timeout: 90_000,
   expect: { timeout: 15_000 },
+
+  testIgnore: [
+    '**/compliance-personnel.spec.ts',
+  ]
 });

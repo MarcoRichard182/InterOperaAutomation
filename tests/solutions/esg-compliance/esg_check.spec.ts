@@ -1,3 +1,4 @@
+// tests/solutions/esg-compliance/esg_check.spec.ts (or wherever your ESG spec is)
 import { test, expect, Page } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
@@ -6,19 +7,50 @@ import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-m
 type Module = {
   name: string;
   panelName: string;
-  href: string;
-  urlMatches: RegExp;
+
+  // allow different paths per env
+  hrefByEnv: { dev: string; prod: string };
+
+  // allow different URL matchers per env
+  urlMatchesByEnv: { dev: RegExp; prod: RegExp };
 };
 
 const SOLUTION_NAME = 'ESG & Compliance';
 
 const MODULES: Module[] = [
-  { name: 'Compliance', panelName: 'Compliance', href: '/srec/compliance', urlMatches: /\/srec\/compliance(?:[/?#]|$)/i },
-  { name: 'Sustainability', panelName: 'Sustainability', href: '/srec/sustainability-monitoring', urlMatches: /\/srec\/sustainability-monitoring(?:[/?#]|$)/i },
+  {
+    name: 'Compliance',
+    panelName: 'Compliance',
+    hrefByEnv: {
+      dev: '/srec-new/compliance',
+      prod: '/srec/compliance',
+    },
+    urlMatchesByEnv: {
+      dev: /\/srec-new\/compliance(?:[/?#]|$)/i,
+      prod: /\/srec\/compliance(?:[/?#]|$)/i,
+    },
+  },
+  {
+    name: 'Sustainability',
+    panelName: 'Sustainability',
+    hrefByEnv: {
+      dev: '/srec-new/sustainability-monitoring', // dev not deployed yet? keep but won't be used in prod
+      prod: '/srec/sustainability-monitoring',
+    },
+    urlMatchesByEnv: {
+      dev: /\/srec-new\/sustainability-monitoring(?:[/?#]|$)/i,
+      prod: /\/srec\/sustainability-monitoring(?:[/?#]|$)/i,
+    },
+  },
 ];
 
-function escRx(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function currentEnv(): 'dev' | 'prod' {
+  const t = (process.env.TARGET_ENV || '').toLowerCase();
+  return t === 'prod' ? 'prod' : 'dev';
+}
+
+function escRx(s?: string) {
+  return String(s ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 function norm(s: string) {
   return (s ?? '').replace(/\s+/g, ' ').trim();
@@ -27,10 +59,21 @@ function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
 
-async function openSolutionPanel(page: Page) {
+function pushAllMissingAccess(
+  rows: MenuCheckRow[],
+  solutionName: string,
+  modules: Module[],
+  detail = `No access / menu not visible for "${solutionName}" (likely permissions).`,
+) {
+  // IMPORTANT: use module.name only (not env-dependent)
+  for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
+  for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
+}
+
+async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
   await waitForAppIdle(page);
 
-  const solRx = new RegExp(`^\\s*${escRx(SOLUTION_NAME)}\\s*$`, 'i');
+  const solRx = new RegExp(`^\\s*${escRx(solutionName)}\\s*$`, 'i');
   const candidates = [
     page.getByRole('button', { name: solRx }).first(),
     page.getByRole('link', { name: solRx }).first(),
@@ -39,14 +82,14 @@ async function openSolutionPanel(page: Page) {
     page.getByText(solRx).first(),
   ];
 
-  const sol = await firstVisibleLocator(candidates as any, 3000);
-  if (!sol) throw new Error(`Side menu "${SOLUTION_NAME}" not found`);
+  const sol = await firstVisibleLocator(candidates as any, 2500);
+  if (!sol) throw new Error(`Side menu "${solutionName}" not found (maybe permissions)`);
 
   await sol.scrollIntoViewIfNeeded().catch(() => {});
   await sol.click({ force: true });
 
-  const hint = page.getByText(new RegExp(escRx(MODULES[0].panelName), 'i')).first();
-  await expect(hint, 'Solution panel did not open / module list not visible').toBeVisible({ timeout: 10_000 });
+  const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
+  await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
 }
 
 async function clickModuleFromPanel(page: Page, panelName: string) {
@@ -66,18 +109,20 @@ async function clickModuleFromPanel(page: Page, panelName: string) {
   await target.click({ force: true });
 }
 
-async function assertLoaded(page: Page, mod: Module) {
+async function assertLoaded(page: Page, urlMatches: RegExp, moduleName: string) {
   await waitForAppIdle(page);
   await expect(page).not.toHaveURL(/\/login/i, { timeout: 10_000 });
-  await expect(page).toHaveURL(mod.urlMatches, { timeout: 25_000 });
+  await expect(page).toHaveURL(urlMatches, { timeout: 25_000 });
 
   const notFound = page.getByText(/404|not found|page not found/i).first();
-  if (await notFound.isVisible().catch(() => false)) throw new Error(`Landed on 404/not-found page for: ${mod.name}`);
+  if (await notFound.isVisible().catch(() => false)) {
+    throw new Error(`Landed on 404/not-found page for: ${moduleName}`);
+  }
 }
 
-async function clickFromTopMenu(page: Page, mod: Module) {
-  const nameRx = new RegExp(`^\\s*${escRx(mod.name)}\\s*$`, 'i');
-  const hrefLoc = page.locator(`a[href="${mod.href}"], a[href^="${mod.href}?"], a[href^="${mod.href}#"]`).first();
+async function clickFromTopMenu(page: Page, name: string, href: string) {
+  const nameRx = new RegExp(`^\\s*${escRx(name)}\\s*$`, 'i');
+  const hrefLoc = page.locator(`a[href="${href}"], a[href^="${href}?"], a[href^="${href}#"]`).first();
 
   const target = await firstVisibleLocator(
     [
@@ -89,13 +134,13 @@ async function clickFromTopMenu(page: Page, mod: Module) {
     2000,
   );
 
-  if (!target) throw new Error(`Top menu item not found for: ${mod.name}`);
+  if (!target) throw new Error(`Top menu item not found for: ${name}`);
   await target.scrollIntoViewIfNeeded().catch(() => {});
   await target.click({ force: true });
 }
 
 async function discoverLinks(page: Page) {
-  const anchors = page.locator('a[href^="/srec"], a[href*="/srec"]').filter({ hasText: /./ });
+  const anchors = page.locator('a[href^="/srec"], a[href*="/srec"], a[href^="/srec-new"], a[href*="/srec-new"]').filter({ hasText: /./ });
   const count = await anchors.count().catch(() => 0);
 
   const items: { name: string; href: string }[] = [];
@@ -115,35 +160,46 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
   test('modules accessible via side menu + top menu, and detect unexpected modules', async ({ page }) => {
     test.setTimeout(220_000);
     const rows: MenuCheckRow[] = [];
+    const env = currentEnv();
 
     try {
       await login(page);
+
+      // open panel (if no access -> mark all and return)
+      try {
+        await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
+      } catch (e: any) {
+        pushAllMissingAccess(rows, SOLUTION_NAME, MODULES, e?.message || String(e));
+        return;
+      }
 
       // SIDE
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
-          await openSolutionPanel(page);
+          await openSolutionPanel(page, SOLUTION_NAME, mod.panelName);
           await clickModuleFromPanel(page, mod.panelName);
-          await assertLoaded(page, mod);
+          await assertLoaded(page, mod.urlMatchesByEnv[env], mod.name);
           rows.push({ label, status: 'PASS' });
         } catch (e: any) {
           rows.push({ label, status: 'ERROR', detail: e?.message || String(e) });
         }
       }
 
-      // TOP (ensure we are in /srec first)
-      if (!/\/srec\//i.test(page.url())) {
-        await openSolutionPanel(page);
-        await clickModuleFromPanel(page, MODULES[0].panelName);
-        await assertLoaded(page, MODULES[0]);
+      // TOP (go to first module to ensure top menu exists)
+      const first = MODULES[0];
+      if (!/\/srec/i.test(page.url())) {
+        await openSolutionPanel(page, SOLUTION_NAME, first.panelName);
+        await clickModuleFromPanel(page, first.panelName);
+        await assertLoaded(page, first.urlMatchesByEnv[env], first.name);
       }
 
       for (const mod of MODULES) {
         const label = `Top menu — ${mod.name}`;
         try {
-          await clickFromTopMenu(page, mod);
-          await assertLoaded(page, mod);
+          const href = mod.hrefByEnv[env];
+          await clickFromTopMenu(page, mod.name, href);
+          await assertLoaded(page, mod.urlMatchesByEnv[env], mod.name);
           rows.push({ label, status: 'PASS' });
         } catch (e: any) {
           rows.push({ label, status: 'ERROR', detail: e?.message || String(e) });
@@ -151,12 +207,18 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
       }
 
       // EXTRA detection
-      await openSolutionPanel(page);
+      await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
       const discovered = await discoverLinks(page);
-      const expected = new Set(MODULES.map((m) => m.href));
-      const extras = discovered.filter((d) => d.href.includes('/srec') && !expected.has(d.href));
+
+      const expected = new Set(MODULES.map((m) => m.hrefByEnv[env]));
+      const extras = discovered.filter((d) => (d.href.includes('/srec') || d.href.includes('/srec-new')) && !expected.has(d.href));
+
       for (const ex of extras) {
-        rows.push({ label: `Side menu EXTRA — ${ex.name}`, status: 'ERROR', detail: `Unexpected module link found: ${ex.href}` });
+        rows.push({
+          label: `Side menu EXTRA — ${ex.name}`,
+          status: 'ERROR',
+          detail: `Unexpected module link found: ${ex.href}`,
+        });
       }
 
       if (rows.some((r) => r.status === 'ERROR')) throw new Error('Some ESG & Compliance navigation checks failed.');

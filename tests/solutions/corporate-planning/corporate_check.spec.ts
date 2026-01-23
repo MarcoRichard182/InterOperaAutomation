@@ -4,6 +4,8 @@ import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
 
+
+
 type Module = {
   name: string;          // report label
   panelName: string;     // UI text in the Corporate panel
@@ -22,6 +24,56 @@ const MODULES: Module[] = [
   { name: 'HR', panelName: 'Human Resources (HR)', href: '/corporate/hr', urlMatches: /\/corporate\/hr(?:[/?#]|$)/i },
   { name: 'REC Management', panelName: 'REC', href: '/corporate/rec', urlMatches: /\/corporate\/rec(?:[/?#]|$)/i },
 ];
+
+function pushAllMissingAccess(
+  rows: MenuCheckRow[],
+  solutionName: string,
+  modules: Module[],
+  detail = `No access / menu not visible for "${solutionName}" (likely permissions).`,
+) {
+  for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
+  for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
+}
+
+// ✅ FIX: make openSolutionPanel take solutionName + hint so it's not "undefined" / wrong-args
+async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
+  await waitForAppIdle(page);
+
+  const solRx = new RegExp(`^\\s*${escRx(solutionName)}\\s*$`, 'i');
+  const candidates = [
+    page.getByRole('button', { name: solRx }).first(),
+    page.getByRole('link', { name: solRx }).first(),
+    page.locator('button').filter({ hasText: solRx }).first(),
+    page.locator('a').filter({ hasText: solRx }).first(),
+    page.getByText(solRx).first(),
+  ];
+
+  const sol = await firstVisibleLocator(candidates as any, 2500);
+  if (!sol) throw new Error(`Side menu "${solutionName}" not found (maybe permissions)`);
+
+  await sol.scrollIntoViewIfNeeded().catch(() => {});
+  await sol.click({ force: true });
+
+  const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
+  await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
+}
+
+async function ensureSolutionPanelOrMarkAll(
+  page: Page,
+  rows: MenuCheckRow[],
+  solutionName: string,
+  modules: Module[],
+): Promise<boolean> {
+  try {
+    const hint = modules[0]?.panelName || modules[0]?.name || solutionName;
+    await openSolutionPanel(page, solutionName, hint);
+    return true;
+  } catch (e: any) {
+    pushAllMissingAccess(rows, solutionName, modules, e?.message || String(e));
+    return false;
+  }
+}
+
 
 function escRx(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -147,7 +199,8 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
 
     try {
       await login(page);
-
+      const ok = await ensureSolutionPanelOrMarkAll(page, rows, SOLUTION_NAME, MODULES);
+      if (!ok) return;
       // -----------------------
       // SIDE MENU (panel)
       // -----------------------

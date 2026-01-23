@@ -4,7 +4,8 @@ import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
 import type { ReportRow } from '../../../helpers/slack-helper';
 import { sendHomeSlackReport } from '../../../helpers/slack-home-report';
-import { sendMenuSlackReport, MenuCheckRow } from '../../../helpers/slack-menu-report';
+import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
+
 import {
   openSolutionPanel,
   discoverModulesFromPanel,
@@ -34,6 +35,8 @@ const HOME_MODULES: HomeModule[] = [
   { name: 'Task & Scheduler', slug: 'task-scheduler', heading: /Task\s*&\s*Scheduler/i },
   { name: 'Data Management', slug: 'data-management', heading: /^Data Management$/i },
 ];
+
+
 
 function now() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -149,7 +152,6 @@ test.describe('Home solution checker', () => {
 
     try {
       await login(page);
-
       // -----------------------
       // SIDE MENU: Home panel buttons
       // -----------------------
