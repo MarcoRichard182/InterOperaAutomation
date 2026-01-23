@@ -45,7 +45,7 @@ jobs:
       - name: Run tests (${{ matrix.env }})
         shell: bash
         run: |
-          npx dotenv -e .env.ci -- npm run test:${{ matrix.env }} -- tests/solutions
+          npx dotenv -e .env.ci -- npm run test:${{ matrix.env }}:combined
 
       - name: Upload Playwright report
         if: always()
