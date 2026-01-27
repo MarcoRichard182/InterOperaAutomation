@@ -1,5 +1,5 @@
 // tests/solutions/sales-projects/modules/sales_projects_check.spec.ts
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { login } from '../../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../../helpers/page-utils';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../../helpers/slack-menu-report';
@@ -7,14 +7,18 @@ import { sendMenuSlackReport, type MenuCheckRow } from '../../../../helpers/slac
 type Module = {
   name: string;
   panelName: string;
-  href?: string; // relative href when same domain
+  href?: string;
   urlMatches: RegExp;
 };
 
 const SOLUTION_NAME = 'Sales & Projects';
 
 const MODULES: Module[] = [
+  // ✅ NEW
   { name: 'Overview', panelName: 'Overview', href: '/smm/overview', urlMatches: /\/smm\/overview(?:[/?#]|$)/i },
+  // ✅ NEW
+  { name: 'Scheduler', panelName: 'Scheduler', href: '/smm/scheduler', urlMatches: /\/smm\/scheduler(?:[/?#]|$)/i },
+
   {
     name: 'Sales & Strategic Partnerships',
     panelName: 'Sales & Strategic Partnerships',
@@ -27,7 +31,6 @@ const MODULES: Module[] = [
     href: '/smm/products',
     urlMatches: /\/smm\/products(?:[/?#]|$)/i,
   },
-  { name: 'Overview', panelName: 'Overview', href: '/smm/overview', urlMatches: /\/smm\/overview(?:[/?#]|$)/i },
 ];
 
 function pushAllMissingAccess(
@@ -40,7 +43,6 @@ function pushAllMissingAccess(
   for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
 }
 
-// ✅ SAFE: never throws on undefined
 function escRx(s?: string) {
   return String(s ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -50,8 +52,17 @@ function norm(s: string) {
 function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
+function normalizeHref(href: string): string {
+  const raw = (href || '').trim();
+  if (!raw) return '';
+  try {
+    if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
+    return raw.split('?')[0].split('#')[0];
+  } catch {
+    return raw.split('?')[0].split('#')[0];
+  }
+}
 
-// ✅ FIXED SIGNATURE: takes solutionName + hint
 async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
   await waitForAppIdle(page);
 
@@ -74,7 +85,6 @@ async function openSolutionPanel(page: Page, solutionName: string, firstModuleHi
   await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
 }
 
-// ✅ wrapper so we can safely call openPanel(page) everywhere
 async function openPanel(page: Page) {
   const hint = MODULES[0]?.panelName || MODULES[0]?.name || SOLUTION_NAME;
   await openSolutionPanel(page, SOLUTION_NAME, hint);
@@ -147,8 +157,8 @@ async function clickFromTopMenu(page: Page, mod: Module) {
   await target.click({ force: true });
 }
 
-async function discoverLinks(page: Page) {
-  const anchors = page.locator('a[href*="/smm"], a[href^="/smm"]').filter({ hasText: /./ });
+async function discoverLinksInScope(scope: Locator, hrefRx: RegExp) {
+  const anchors = scope.locator('a[href]').filter({ hasText: /./ });
   const count = await anchors.count().catch(() => 0);
 
   const items: { name: string; href: string }[] = [];
@@ -156,7 +166,10 @@ async function discoverLinks(page: Page) {
     const a = anchors.nth(i);
     if (!(await a.isVisible().catch(() => false))) continue;
 
-    const href = (await a.getAttribute('href').catch(() => '')) || '';
+    const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
+    const href = normalizeHref(hrefRaw);
+    if (!hrefRx.test(href)) continue;
+
     const text = norm(await a.innerText().catch(() => ''));
     if (!href || !text) continue;
 
@@ -164,7 +177,22 @@ async function discoverLinks(page: Page) {
   }
 
   const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
-  return uniq(items.map((x) => ({ ...x }))).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
+  return uniq(items).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
+}
+
+async function discoverSideLinks(page: Page) {
+  return discoverLinksInScope(page.locator('body'), /\/smm(?:\/|$)/i);
+}
+
+async function discoverTopLinks(page: Page) {
+  const headerCandidates = [
+    page.locator('header').first(),
+    page.locator('[role="navigation"]').first(),
+    page.locator('nav').first(),
+  ];
+  const header = await firstVisibleLocator(headerCandidates as any, 1200);
+  const scope = header ?? page.locator('body');
+  return discoverLinksInScope(scope, /\/smm(?:\/|$)/i);
 }
 
 test.describe(`${SOLUTION_NAME} solution checker`, () => {
@@ -191,10 +219,10 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // TOP (ensure we are in /smm first)
+      // TOP (ensure we are in /smm first -> go to Overview)
       if (!/\/smm\//i.test(page.url())) {
         await openPanel(page);
-        await clickModuleFromPanel(page, MODULES[0].panelName);
+        await clickModuleFromPanel(page, 'Overview');
         await assertLoaded(page, MODULES[0]);
       }
 
@@ -209,15 +237,26 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // EXTRA detection (only checks /smm links on current domain)
+      // EXTRA detection (Side + Top)
       await openPanel(page);
-      const discovered = await discoverLinks(page);
-      const expected = new Set(MODULES.map((m) => m.href).filter(Boolean) as string[]);
-      const extras = discovered.filter((d) => d.href.includes('/smm') && !expected.has(d.href));
 
-      for (const ex of extras) {
+      const expected = new Set<string>(
+        MODULES.map((m) => m.href).filter((h): h is string => Boolean(h)).map(normalizeHref),
+      );
+
+      const discoveredSide = await discoverSideLinks(page);
+      for (const ex of discoveredSide.filter((d) => !expected.has(d.href))) {
         rows.push({
           label: `Side menu EXTRA — ${ex.name}`,
+          status: 'ERROR',
+          detail: `Unexpected module link found: ${ex.href}`,
+        });
+      }
+
+      const discoveredTop = await discoverTopLinks(page);
+      for (const ex of discoveredTop.filter((d) => !expected.has(d.href))) {
+        rows.push({
+          label: `Top menu EXTRA — ${ex.name}`,
           status: 'ERROR',
           detail: `Unexpected module link found: ${ex.href}`,
         });

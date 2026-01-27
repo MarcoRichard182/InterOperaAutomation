@@ -16,16 +16,13 @@ type Module = {
 const SOLUTION_NAME = 'Corporate Planning';
 
 const MODULES: Module[] = [
-  // { name: 'Overview', panelName: 'Corporate Planning', href: '/corporate', urlMatches: /\/corporate(?:[/?#]|$)/i },
-  { name: 'Overview', panelName: 'Overview', href: '/corporate/overview', urlMatches: /\/corporate\/overview(?:[/?#]|$)/i },
-  
+  { name: 'Overview', panelName: 'Corporate Planning', href: '/corporate', urlMatches: /\/corporate(?:[/?#]|$)/i },
   { name: 'Accounting', panelName: 'Accounting', href: '/corporate/accounting', urlMatches: /\/corporate\/accounting(?:[/?#]|$)/i },
   { name: 'Finance', panelName: 'Finance', href: '/corporate/finance', urlMatches: /\/corporate\/finance(?:[/?#]|$)/i },
   { name: 'Asset Management', panelName: 'Assets Management', href: '/corporate/asset-management', urlMatches: /\/corporate\/asset-management(?:[/?#]|$)/i },
   { name: 'Asset Operations', panelName: 'Assets Operations', href: '/corporate/asset-operations', urlMatches: /\/corporate\/asset-operations(?:[/?#]|$)/i },
   { name: 'HR', panelName: 'Human Resources (HR)', href: '/corporate/hr', urlMatches: /\/corporate\/hr(?:[/?#]|$)/i },
   { name: 'REC Management', panelName: 'REC', href: '/corporate/rec', urlMatches: /\/corporate\/rec(?:[/?#]|$)/i },
-  { name: 'Scheduler', panelName: 'Scheduler', href: '/corporate/scheduler', urlMatches: /\/corporate\/scheduler(?:[/?#]|$)/i },
 ];
 
 function pushAllMissingAccess(

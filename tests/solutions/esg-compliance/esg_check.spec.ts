@@ -1,5 +1,4 @@
-// tests/solutions/esg-compliance/esg_check.spec.ts (or wherever your ESG spec is)
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
@@ -18,15 +17,21 @@ type Module = {
 const SOLUTION_NAME = 'ESG & Compliance';
 
 const MODULES: Module[] = [
+  // ✅ NEW
+
   {
-  name: 'Overview',
-  panelName: 'Overview',
-  hrefByEnv: { dev: '/srec-new/overview', prod: '/srec-new/overview' },
-  urlMatchesByEnv: {
-    dev: /\/srec-new\/overview(?:[/?#]|$)/i,
-    prod: /\/srec-new\/overview(?:[/?#]|$)/i,
+    name: 'Overview',
+    panelName: 'Overview',
+    hrefByEnv: { dev: '/srec-new/overview', prod: '/srec-new/overview' },
+    urlMatchesByEnv: { dev: /\/srec-new\/overview(?:[/?#]|$)/i, prod: /\/srec-new\/overview(?:[/?#]|$)/i },
   },
-  }, 
+  {
+    name: 'Scheduler',
+    panelName: 'Scheduler',
+    hrefByEnv: { dev: '/srec-new/scheduler', prod: '/srec-new/scheduler' },
+    urlMatchesByEnv: { dev: /\/srec-new\/scheduler(?:[/?#]|$)/i, prod: /\/srec-new\/scheduler(?:[/?#]|$)/i },
+  },
+
   {
     name: 'Compliance',
     panelName: 'Compliance',
@@ -43,7 +48,7 @@ const MODULES: Module[] = [
     name: 'Sustainability',
     panelName: 'Sustainability',
     hrefByEnv: {
-      dev: '/srec-new/sustainability-monitoring', // dev not deployed yet? keep but won't be used in prod
+      dev: '/srec-new/sustainability-monitoring',
       prod: '/srec/sustainability-monitoring',
     },
     urlMatchesByEnv: {
@@ -51,15 +56,6 @@ const MODULES: Module[] = [
       prod: /\/srec\/sustainability-monitoring(?:[/?#]|$)/i,
     },
   },
-  {
-  name: 'Scheduler',
-  panelName: 'Scheduler',
-  hrefByEnv: { dev: '/srec-new/scheduler', prod: '/srec-new/scheduler' },
-  urlMatchesByEnv: {
-    dev: /\/srec-new\/scheduler(?:[/?#]|$)/i,
-    prod: /\/srec-new\/scheduler(?:[/?#]|$)/i,
-  },
-},
 ];
 
 function currentEnv(): 'dev' | 'prod' {
@@ -77,13 +73,23 @@ function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
 
+function normalizeHref(href: string): string {
+  const raw = (href || '').trim();
+  if (!raw) return '';
+  try {
+    if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
+    return raw.split('?')[0].split('#')[0];
+  } catch {
+    return raw.split('?')[0].split('#')[0];
+  }
+}
+
 function pushAllMissingAccess(
   rows: MenuCheckRow[],
   solutionName: string,
   modules: Module[],
   detail = `No access / menu not visible for "${solutionName}" (likely permissions).`,
 ) {
-  // IMPORTANT: use module.name only (not env-dependent)
   for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
   for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
 }
@@ -157,33 +163,55 @@ async function clickFromTopMenu(page: Page, name: string, href: string) {
   await target.click({ force: true });
 }
 
-async function discoverLinks(page: Page) {
-  const anchors = page.locator('a[href^="/srec"], a[href*="/srec"], a[href^="/srec-new"], a[href*="/srec-new"]').filter({ hasText: /./ });
+async function discoverLinksInScope(scope: Locator, hrefRx: RegExp) {
+  const anchors = scope.locator('a[href]').filter({ hasText: /./ });
   const count = await anchors.count().catch(() => 0);
 
   const items: { name: string; href: string }[] = [];
   for (let i = 0; i < count; i++) {
     const a = anchors.nth(i);
     if (!(await a.isVisible().catch(() => false))) continue;
-    const href = (await a.getAttribute('href').catch(() => '')) || '';
+
+    const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
+    const href = normalizeHref(hrefRaw);
+    if (!hrefRx.test(href)) continue;
+
     const text = norm(await a.innerText().catch(() => ''));
     if (!href || !text) continue;
     items.push({ name: text, href });
   }
+
   const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
-  return uniq(items.map((x) => ({ ...x }))).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
+  return uniq(items).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
+}
+
+async function discoverSideLinks(page: Page) {
+  // Side panel is open already; read from the whole page to avoid brittle selectors.
+  // Filter to relevant hrefs only.
+  return discoverLinksInScope(page.locator('body'), /\/srec(?:-new)?(?:\/|$)/i);
+}
+
+async function discoverTopLinks(page: Page) {
+  const headerCandidates = [
+    page.locator('header').first(),
+    page.locator('[role="navigation"]').first(),
+    page.locator('nav').first(),
+  ];
+  const header = await firstVisibleLocator(headerCandidates as any, 1200);
+  const scope = header ?? page.locator('body');
+  return discoverLinksInScope(scope, /\/srec(?:-new)?(?:\/|$)/i);
 }
 
 test.describe(`${SOLUTION_NAME} solution checker`, () => {
   test('modules accessible via side menu + top menu, and detect unexpected modules', async ({ page }) => {
-    test.setTimeout(220_000);
+    test.setTimeout(240_000);
     const rows: MenuCheckRow[] = [];
     const env = currentEnv();
 
     try {
       await login(page);
 
-      // open panel (if no access -> mark all and return)
+      // Open panel (if no access -> mark all and return)
       try {
         await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
       } catch (e: any) {
@@ -191,11 +219,11 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         return;
       }
 
-      // SIDE
+      // SIDE checks
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
-          await openSolutionPanel(page, SOLUTION_NAME, mod.panelName);
+          await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
           await clickModuleFromPanel(page, mod.panelName);
           await assertLoaded(page, mod.urlMatchesByEnv[env], mod.name);
           rows.push({ label, status: 'PASS' });
@@ -204,8 +232,8 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // TOP (go to first module to ensure top menu exists)
-      const first = MODULES[0];
+      // TOP checks (ensure we are in solution first)
+      const first = MODULES[0]; // Overview
       if (!/\/srec/i.test(page.url())) {
         await openSolutionPanel(page, SOLUTION_NAME, first.panelName);
         await clickModuleFromPanel(page, first.panelName);
@@ -224,16 +252,26 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // EXTRA detection
+      // EXTRA detection (Side + Top)
       await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
-      const discovered = await discoverLinks(page);
 
-      const expected = new Set(MODULES.map((m) => m.hrefByEnv[env]));
-      const extras = discovered.filter((d) => (d.href.includes('/srec') || d.href.includes('/srec-new')) && !expected.has(d.href));
+      const expected = new Set(MODULES.map((m) => m.hrefByEnv[env]).map(normalizeHref));
 
-      for (const ex of extras) {
+      const discoveredSide = await discoverSideLinks(page);
+      const sideExtras = discoveredSide.filter((d) => !expected.has(d.href));
+      for (const ex of sideExtras) {
         rows.push({
           label: `Side menu EXTRA — ${ex.name}`,
+          status: 'ERROR',
+          detail: `Unexpected module link found: ${ex.href}`,
+        });
+      }
+
+      const discoveredTop = await discoverTopLinks(page);
+      const topExtras = discoveredTop.filter((d) => !expected.has(d.href));
+      for (const ex of topExtras) {
+        rows.push({
+          label: `Top menu EXTRA — ${ex.name}`,
           status: 'ERROR',
           detail: `Unexpected module link found: ${ex.href}`,
         });

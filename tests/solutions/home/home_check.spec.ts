@@ -2,26 +2,7 @@
 import { test, expect, Page, Locator } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
-import type { ReportRow } from '../../../helpers/slack-helper';
-import { sendHomeSlackReport } from '../../../helpers/slack-home-report';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
-
-import {
-  openSolutionPanel,
-  discoverModulesFromPanel,
-  compareDiscoveredModules,
-  clickModuleFromPanel,
-  clickModuleFromTop,
-  assertModuleLoaded
-} from '../../../helpers/solution-checker';
-
-
-
-function stepRow(field: string, status: 'PASS' | 'ERROR', actual = ''): ReportRow {
-  return { section: 'Flow', field, expected: '', actual, status };
-}
-
-
 
 type HomeModule = {
   name: string;
@@ -32,37 +13,33 @@ type HomeModule = {
 const HOME_MODULES: HomeModule[] = [
   { name: 'AI Hub', slug: 'ai-hub', heading: /^AI Hub$/i },
   { name: 'AI Organisation', slug: 'ai-organisation', heading: /^AI Organisation$/i },
-  { name: 'Scheduler', slug: 'scheduler', heading: /^Scheduler$/i },
+  { name: 'Scheduler', slug: 'scheduler', heading: /Scheduler/i },
   { name: 'Data Management', slug: 'data-management', heading: /^Data Management$/i },
 ];
 
-
-
-function now() {
-  return new Date().toISOString().replace(/[:.]/g, '-');
+function escRx(s?: string) {
+  return String(s ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-
-function escRx(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function norm(s: string) {
+  return (s ?? '').replace(/\s+/g, ' ').trim();
 }
-
-async function getLeftSidebar(page: Page): Promise<Locator> {
-  // try to find the left nav/aside that contains common menu text
-  const candidates = [
-    page.locator('aside').filter({ hasText: /Corporate Planning|Research Intelligence|Sales & Projects|ESG & Compliance/i }).first(),
-    page.locator('nav').filter({ hasText: /Corporate Planning|Research Intelligence|Sales & Projects|ESG & Compliance/i }).first(),
-    page.locator('aside').first(),
-    page.locator('nav').first(),
-  ];
-
-  const sidebar = await firstVisibleLocator(candidates as any, 1200);
-  return sidebar ?? page.locator('body');
+function uniq<T>(arr: T[]) {
+  return Array.from(new Set(arr));
+}
+function normalizeHref(href: string): string {
+  const raw = (href || '').trim();
+  if (!raw) return '';
+  try {
+    if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
+    return raw.split('?')[0].split('#')[0];
+  } catch {
+    return raw.split('?')[0].split('#')[0];
+  }
 }
 
 async function openHomePanel(page: Page) {
   await waitForAppIdle(page);
 
-  // Don’t over-scope early. "Home" in the left sidebar is usually a link (<a>).
   const homeCandidates = [
     page.getByRole('link', { name: /^Home$/i }).first(),
     page.getByRole('button', { name: /^Home$/i }).first(),
@@ -77,16 +54,12 @@ async function openHomePanel(page: Page) {
   await homeItem.scrollIntoViewIfNeeded().catch(() => {});
   await homeItem.click({ force: true });
 
-  // Home panel should show module list (AI Hub etc.)
   const aiHubBtn = page.getByRole('button', { name: /^AI Hub$/i }).first();
   await expect(aiHubBtn, 'Home panel did not open (AI Hub not visible)').toBeVisible({ timeout: 10_000 });
 }
 
-
 async function clickModuleFromHomePanel(page: Page, moduleName: string) {
   const rx = new RegExp(`^\\s*${escRx(moduleName)}\\s*$`, 'i');
-
-  // In your DOM, modules appear as <button> inside the Home panel
   const btn = page.getByRole('button', { name: rx }).first();
 
   await expect(btn, `Module button not visible in Home panel: ${moduleName}`).toBeVisible({ timeout: 10_000 });
@@ -95,9 +68,7 @@ async function clickModuleFromHomePanel(page: Page, moduleName: string) {
 }
 
 async function clickModuleFromTopBar(page: Page, mod: HomeModule) {
-  // Prefer href because it’s very stable
   const linkByHref = page.locator(`a[href*="/home/${mod.slug}"]`).first();
-
   const rx = new RegExp(`^\\s*${escRx(mod.name)}\\s*$`, 'i');
 
   const target = await firstVisibleLocator(
@@ -107,7 +78,7 @@ async function clickModuleFromTopBar(page: Page, mod: HomeModule) {
       page.getByRole('link', { name: rx }).first(),
       page.locator('a').filter({ hasText: rx }).first(),
       page.getByRole('button', { name: rx }).first(),
-    ],
+    ] as any,
     1500,
   );
 
@@ -120,63 +91,83 @@ async function clickModuleFromTopBar(page: Page, mod: HomeModule) {
 async function assertHomeModuleLoaded(page: Page, mod: HomeModule) {
   await waitForAppIdle(page);
 
-  // not logged out
   await expect(page, 'Unexpectedly navigated to login page').not.toHaveURL(/\/login/i, { timeout: 10_000 });
 
-  // URL check (strong + simple)
-  await expect(page, `URL did not include /home/${mod.slug}`).toHaveURL(new RegExp(`/home/${escRx(mod.slug)}(?:[/?#]|$)`, 'i'), {
-    timeout: 15_000,
-  });
+  await expect(page, `URL did not include /home/${mod.slug}`).toHaveURL(
+    new RegExp(`/home/${escRx(mod.slug)}(?:[/?#]|$)`, 'i'),
+    { timeout: 15_000 },
+  );
 
-  // page loaded signal (heading or text)
   if (mod.heading) {
     const ok =
       (await page.getByRole('heading', { name: mod.heading }).first().isVisible().catch(() => false)) ||
       (await page.getByText(mod.heading).first().isVisible().catch(() => false));
-
-    if (!ok) {
-      throw new Error(`Page loaded but expected heading/text not found for module: ${mod.name}`);
-    }
+    if (!ok) throw new Error(`Page loaded but expected heading/text not found for module: ${mod.name}`);
   }
 
-  // avoid silent 404-ish pages
   const notFound = page.getByText(/404|not found|page not found/i).first();
-  if (await notFound.isVisible().catch(() => false)) {
-    throw new Error(`Landed on a 404/not-found page for module: ${mod.name}`);
+  if (await notFound.isVisible().catch(() => false)) throw new Error(`Landed on a 404/not-found page for module: ${mod.name}`);
+}
+
+async function discoverLinksInScope(scope: Locator, hrefRx: RegExp) {
+  const anchors = scope.locator('a[href]').filter({ hasText: /./ });
+  const count = await anchors.count().catch(() => 0);
+
+  const items: { name: string; href: string }[] = [];
+  for (let i = 0; i < count; i++) {
+    const a = anchors.nth(i);
+    if (!(await a.isVisible().catch(() => false))) continue;
+
+    const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
+    const href = normalizeHref(hrefRaw);
+    if (!hrefRx.test(href)) continue;
+
+    const text = norm(await a.innerText().catch(() => ''));
+    if (!href || !text) continue;
+
+    items.push({ name: text, href });
   }
+
+  const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
+  return uniq(items).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
+}
+
+async function discoverTopLinks(page: Page) {
+  const headerCandidates = [
+    page.locator('header').first(),
+    page.locator('[role="navigation"]').first(),
+    page.locator('nav').first(),
+  ];
+  const header = await firstVisibleLocator(headerCandidates as any, 1200);
+  const scope = header ?? page.locator('body');
+  return discoverLinksInScope(scope, /\/home\//i);
 }
 
 test.describe('Home solution checker', () => {
-  test('home modules accessible via side menu and top menu', async ({ page }) => {
+  test('home modules accessible via side menu and top menu, and detect unexpected modules', async ({ page }) => {
+    test.setTimeout(240_000);
     const rows: MenuCheckRow[] = [];
 
     try {
       await login(page);
-      // -----------------------
-      // SIDE MENU: Home panel buttons
-      // -----------------------
+
+      // SIDE
       for (const mod of HOME_MODULES) {
         const label = `Side menu — ${mod.name}`;
-
         try {
           await openHomePanel(page);
           await clickModuleFromHomePanel(page, mod.name);
           await assertHomeModuleLoaded(page, mod);
-
           rows.push({ label, status: 'PASS' });
         } catch (e: any) {
           rows.push({ label, status: 'ERROR', detail: e?.message || String(e) });
         }
       }
 
-      // -----------------------
-      // TOP MENU: tabs/links
-      // -----------------------
+      // TOP
       for (const mod of HOME_MODULES) {
         const label = `Top menu — ${mod.name}`;
-
         try {
-          // Ensure we are in /home/* so top bar exists
           if (!/\/home\//i.test(page.url())) {
             await openHomePanel(page);
             await clickModuleFromHomePanel(page, 'AI Hub');
@@ -185,26 +176,46 @@ test.describe('Home solution checker', () => {
 
           await clickModuleFromTopBar(page, mod);
           await assertHomeModuleLoaded(page, mod);
-
           rows.push({ label, status: 'PASS' });
         } catch (e: any) {
           rows.push({ label, status: 'ERROR', detail: e?.message || String(e) });
         }
       }
 
-      // Optional: fail test if any ERROR (but still sends report in finally)
-      const hasError = rows.some((r) => r.status === 'ERROR');
-      if (hasError) throw new Error('Some Home navigation checks failed.');
-    } finally {
+      // EXTRA detection (Side + Top)
+      await openHomePanel(page);
 
-    const hasError = rows.some(r => r.status === 'ERROR');
+      const expected = new Set<string>(HOME_MODULES.map((m) => `/home/${m.slug}`));
+
+      // Side extras: scan whole page for /home/ links (Home panel is visible now)
+      const discoveredSide = await discoverLinksInScope(page.locator('body'), /\/home\//i);
+      for (const ex of discoveredSide.filter((d) => !expected.has(d.href))) {
+        rows.push({
+          label: `Side menu EXTRA — ${ex.name}`,
+          status: 'ERROR',
+          detail: `Unexpected module link found: ${ex.href}`,
+        });
+      }
+
+      // Top extras
+      const discoveredTop = await discoverTopLinks(page);
+      for (const ex of discoveredTop.filter((d) => !expected.has(d.href))) {
+        rows.push({
+          label: `Top menu EXTRA — ${ex.name}`,
+          status: 'ERROR',
+          detail: `Unexpected module link found: ${ex.href}`,
+        });
+      }
+
+      if (rows.some((r) => r.status === 'ERROR')) throw new Error('Some Home navigation checks failed.');
+    } finally {
+      const hasError = rows.some((r) => r.status === 'ERROR');
       await sendMenuSlackReport({
         title: 'Home Solution - Navigation Report',
         rows,
-         mentionUserId: hasError ? '<@U089BQX3Z6F>' : undefined, // ✅ only tag on error
-        includeErrorDetails: true,       // keeps a short "Error details" section
+        mentionUserId: hasError ? '<@U089BQX3Z6F>' : undefined,
+        includeErrorDetails: true,
       });
     }
   });
 });
-
