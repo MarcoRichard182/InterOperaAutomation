@@ -14,6 +14,7 @@ type Module = {
 const SOLUTION_NAME = 'Sales & Projects';
 
 const MODULES: Module[] = [
+  { name: 'Overview', panelName: 'Overview', href: '/smm/overview', urlMatches: /\/smm\/overview(?:[/?#]|$)/i },
   {
     name: 'Sales & Strategic Partnerships',
     panelName: 'Sales & Strategic Partnerships',
@@ -26,6 +27,7 @@ const MODULES: Module[] = [
     href: '/smm/products',
     urlMatches: /\/smm\/products(?:[/?#]|$)/i,
   },
+  { name: 'Overview', panelName: 'Overview', href: '/smm/overview', urlMatches: /\/smm\/overview(?:[/?#]|$)/i },
 ];
 
 function pushAllMissingAccess(

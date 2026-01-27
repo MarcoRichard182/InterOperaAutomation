@@ -14,9 +14,12 @@ type Module = {
 const SOLUTION_NAME = 'Research Intelligence';
 
 const MODULES: Module[] = [
+  { name: 'Overview', panelName: 'Overview', href: '/ri/overview', urlMatches: /\/ri\/overview(?:[/?#]|$)/i },
+
   { name: 'Integrated Intelligence', panelName: 'Integrated Intelligence', href: '/ri/integrated-intelligence', urlMatches: /\/ri\/integrated-intelligence(?:[/?#]|$)/i },
   { name: 'Market Research', panelName: 'Market Research', href: '/ri/market-research-new', urlMatches: /\/ri\/market-research-new(?:[/?#]|$)/i },
   { name: 'E-Mobility', panelName: 'E-Mobility', href: '/ri/emobility', urlMatches: /\/ri\/emobility(?:[/?#]|$)/i },
+  { name: 'Scheduler', panelName: 'Scheduler', href: '/ri/scheduler', urlMatches: /\/ri\/scheduler(?:[/?#]|$)/i },
 ];
 
 function pushAllMissingAccess(

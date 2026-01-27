@@ -19,6 +19,15 @@ const SOLUTION_NAME = 'ESG & Compliance';
 
 const MODULES: Module[] = [
   {
+  name: 'Overview',
+  panelName: 'Overview',
+  hrefByEnv: { dev: '/srec-new/overview', prod: '/srec-new/overview' },
+  urlMatchesByEnv: {
+    dev: /\/srec-new\/overview(?:[/?#]|$)/i,
+    prod: /\/srec-new\/overview(?:[/?#]|$)/i,
+  },
+  }, 
+  {
     name: 'Compliance',
     panelName: 'Compliance',
     hrefByEnv: {
@@ -42,6 +51,15 @@ const MODULES: Module[] = [
       prod: /\/srec\/sustainability-monitoring(?:[/?#]|$)/i,
     },
   },
+  {
+  name: 'Scheduler',
+  panelName: 'Scheduler',
+  hrefByEnv: { dev: '/srec-new/scheduler', prod: '/srec-new/scheduler' },
+  urlMatchesByEnv: {
+    dev: /\/srec-new\/scheduler(?:[/?#]|$)/i,
+    prod: /\/srec-new\/scheduler(?:[/?#]|$)/i,
+  },
+},
 ];
 
 function currentEnv(): 'dev' | 'prod' {

@@ -32,7 +32,7 @@ type HomeModule = {
 const HOME_MODULES: HomeModule[] = [
   { name: 'AI Hub', slug: 'ai-hub', heading: /^AI Hub$/i },
   { name: 'AI Organisation', slug: 'ai-organisation', heading: /^AI Organisation$/i },
-  { name: 'Task & Scheduler', slug: 'task-scheduler', heading: /Task\s*&\s*Scheduler/i },
+  { name: 'Scheduler', slug: 'scheduler', heading: /^Scheduler$/i },
   { name: 'Data Management', slug: 'data-management', heading: /^Data Management$/i },
 ];
 
