@@ -31,9 +31,10 @@ function normalizeHref(href: string): string {
   if (!raw) return '';
   try {
     if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
-    return raw.split('?')[0].split('#')[0];
+    // Strip query parameters and trailing slashes for cleaner comparison
+    return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   } catch {
-    return raw.split('?')[0].split('#')[0];
+    return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   }
 }
 
@@ -185,7 +186,11 @@ test.describe('Home solution checker', () => {
       // EXTRA detection (Side + Top)
       await openHomePanel(page);
 
-      const expected = new Set<string>(HOME_MODULES.map((m) => `/home/${m.slug}`));
+      // UPDATED: Include both the direct slug and known nested sub-paths to avoid false "EXTRA" reports
+      const expected = new Set<string>([
+        ...HOME_MODULES.map((m) => `/home/${m.slug}`),
+        '/home/ai-hub/scheduler' // Explicitly allow the nested scheduler path
+      ]);
 
       // Side extras: scan whole page for /home/ links (Home panel is visible now)
       const discoveredSide = await discoverLinksInScope(page.locator('body'), /\/home\//i);

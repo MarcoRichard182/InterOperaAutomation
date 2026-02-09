@@ -1,3 +1,4 @@
+// tests/subscription/subscription_check.spec.ts
 import { test, expect, Page } from '@playwright/test';
 import { CLIENTS } from '../config/subscription';
 import { MODULE_REGISTRY } from '../config/module-registry';
@@ -15,10 +16,10 @@ function stripAnsi(input: string) {
 function compactError(err: any) {
   const msg = stripAnsi(err?.message || String(err || '')).replace(/\s+/g, ' ').trim();
   if (!msg) return 'Unknown error';
-  // make Slack readable (Playwright expect errors are huge)
   return msg.length > 220 ? `${msg.slice(0, 220)}…` : msg;
 }
 
+// Helper to click menu items by text
 async function clickExact(page: Page, label: string) {
   const rx = new RegExp(`^\\s*${escRx(label)}\\s*$`, 'i');
 
@@ -42,15 +43,20 @@ async function clickExact(page: Page, label: string) {
 }
 
 function solutionLabel(solutionKey: string) {
+  if (solutionKey === 'home') return 'Home';
   if (solutionKey === 'corporate') return 'Corporate Planning';
   if (solutionKey === 'ri') return 'Research Intelligence';
   if (solutionKey === 'smm') return 'Sales & Projects';
-  return 'ESG & Compliance';
+  if (solutionKey === 'srec') return 'ESG & Compliance';
+  return solutionKey;
 }
 
-test.describe('PROD – Subscription Navigation Check', () => {
+test.describe('Subscription Navigation Check', () => {
+  // Use .env.client logic if you have a custom setup, 
+  // otherwise default ENV logic applies.
+  
   test('All clients', async ({ browser }) => {
-    test.setTimeout(20 * 60 * 1000);
+    test.setTimeout(30 * 60 * 1000); // Increased timeout for many clients
 
     const lines: string[] = [];
     let pass = 0;
@@ -61,7 +67,7 @@ test.describe('PROD – Subscription Navigation Check', () => {
         const context = await browser.newContext();
         const page = await context.newPage();
 
-        // client header
+        // Header for Slack
         lines.push('');
         lines.push(`*${client.client}* (${client.email})`);
 
@@ -73,15 +79,16 @@ test.describe('PROD – Subscription Navigation Check', () => {
           } catch (e: any) {
             fail++;
             lines.push(`  • Login ❌ (${compactError(e)})`);
-            continue; // can't proceed without login
+            await context.close().catch(() => {});
+            continue; 
           }
 
           // ---- SOLUTIONS ----
-          for (const [solutionKey, moduleNames] of Object.entries(client.solutions)) {
+          for (const [solutionKey, moduleKeys] of Object.entries(client.solutions)) {
             const solName = solutionLabel(solutionKey);
             lines.push(`  • ${solName}`);
 
-            // open solution panel
+            // 1. Open Solution Panel (Home usually defaults to open, but we click to be safe)
             try {
               await clickExact(page, solName);
             } catch (e: any) {
@@ -90,57 +97,68 @@ test.describe('PROD – Subscription Navigation Check', () => {
               continue;
             }
 
-            for (const moduleName of moduleNames || []) {
-              const mod = MODULE_REGISTRY[moduleName];
+            // 2. Check each module in this solution
+            for (const moduleKey of moduleKeys || []) {
+              const mod = MODULE_REGISTRY[moduleKey];
               if (!mod) {
                 fail++;
-                lines.push(`     - ${moduleName}: ❌ (not in MODULE_REGISTRY)`);
+                lines.push(`     - ${moduleKey}: ❌ (Config Error: Not in Registry)`);
                 continue;
               }
 
-              // SIDE menu
+              // --- SIDE MENU CHECK ---
               let sideOk = false;
               try {
-                // UI may collapse; re-open the solution list
-                await clickExact(page, solName);
-                await clickExact(page, mod.panelName);
+                // Ensure panel is open (re-click solution if needed to expand)
+                if (solutionKey !== 'home') {
+                   // Home items are usually always visible or under 'Home', 
+                   // but for others we might need to toggle.
+                   // Simple retry strategy: click solution, then click module panel name.
+                   await clickExact(page, solName).catch(() => {});
+                }
 
+                await clickExact(page, mod.panelName);
                 await expect(page).toHaveURL(mod.urlMatch, { timeout: 25_000 });
+                
                 pass++;
                 sideOk = true;
-                lines.push(`     - Side: ${mod.name} ✅`);
+                lines.push(`     - Side: ${moduleKey} ✅`);
               } catch (e: any) {
                 fail++;
-                lines.push(`     - Side: ${mod.name} ❌ (${compactError(e)})`);
+                lines.push(`     - Side: ${moduleKey} ❌ (${compactError(e)})`);
               }
 
-              // TOP menu (only if side nav succeeded -> reduces noise)
-              if (!sideOk) continue;
-
-              try {
-                await clickExact(page, mod.name);
-                await expect(page).toHaveURL(mod.urlMatch, { timeout: 25_000 });
-                pass++;
-                lines.push(`     - Top:  ${mod.name} ✅`);
-              } catch (e: any) {
-                fail++;
-                lines.push(`     - Top:  ${mod.name} ❌ (${compactError(e)})`);
+              // --- TOP MENU CHECK ---
+              // Only check top menu if side menu worked (confirms access exists)
+              // and if we are not in Home (Home top menu behaves differently or is absent for some items)
+              if (sideOk) {
+                try {
+                  await clickExact(page, mod.name);
+                  await expect(page).toHaveURL(mod.urlMatch, { timeout: 25_000 });
+                  pass++;
+                  lines.push(`     - Top:  ${moduleKey} ✅`);
+                } catch (e: any) {
+                  // Soft fail for Top menu if side worked
+                  fail++;
+                  lines.push(`     - Top:  ${moduleKey} ❌ (${compactError(e)})`);
+                }
               }
             }
           }
         } catch (e: any) {
           fail++;
-          lines.push(`  • ❌ Client run failed (${compactError(e)})`);
+          lines.push(`  • ❌ Client run crashed (${compactError(e)})`);
         } finally {
           await context.close().catch(() => {});
         }
       }
     } finally {
-      await sendSlackReport(`Solutions – Navigation Report – PROD (✅ ${pass} | 🛑 ${fail})`, lines);
+      // Send Report
+      await sendSlackReport(`Subscription Check Report (✅ ${pass} | 🛑 ${fail})`, lines);
     }
 
     if (fail > 0) {
-      throw new Error(`Subscription navigation check had ${fail} failures.`);
+      throw new Error(`Subscription check had ${fail} failures.`);
     }
   });
 });

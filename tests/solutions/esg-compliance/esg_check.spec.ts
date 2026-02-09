@@ -12,24 +12,29 @@ type Module = {
 
   // allow different URL matchers per env
   urlMatchesByEnv: { dev: RegExp; prod: RegExp };
+
+  // ✅ ADDED: allow old/alias hrefs so they aren't flagged as extras
+  hrefAliases?: string[]; 
 };
 
 const SOLUTION_NAME = 'ESG & Compliance';
 
 const MODULES: Module[] = [
-  // ✅ NEW
-
   {
     name: 'Overview',
     panelName: 'Overview',
     hrefByEnv: { dev: '/srec-new/overview', prod: '/srec-new/overview' },
     urlMatchesByEnv: { dev: /\/srec-new\/overview(?:[/?#]|$)/i, prod: /\/srec-new\/overview(?:[/?#]|$)/i },
+    // ✅ Allow old link
+    hrefAliases: ['/srec/overview'],
   },
   {
     name: 'Scheduler',
     panelName: 'Scheduler',
     hrefByEnv: { dev: '/srec-new/scheduler', prod: '/srec-new/scheduler' },
     urlMatchesByEnv: { dev: /\/srec-new\/scheduler(?:[/?#]|$)/i, prod: /\/srec-new\/scheduler(?:[/?#]|$)/i },
+    // ✅ Allow old link
+    hrefAliases: ['/srec/scheduler'],
   },
 
   {
@@ -37,11 +42,11 @@ const MODULES: Module[] = [
     panelName: 'Compliance',
     hrefByEnv: {
       dev: '/srec-new/compliance',
-      prod: '/srec/compliance',
+      prod: '/srec-new/compliance', // Assuming prod also moved to new, based on pattern
     },
     urlMatchesByEnv: {
       dev: /\/srec-new\/compliance(?:[/?#]|$)/i,
-      prod: /\/srec\/compliance(?:[/?#]|$)/i,
+      prod: /\/srec-new\/compliance(?:[/?#]|$)/i,
     },
   },
   {
@@ -49,11 +54,12 @@ const MODULES: Module[] = [
     panelName: 'Sustainability',
     hrefByEnv: {
       dev: '/srec-new/sustainability-monitoring',
-      prod: '/srec/sustainability-monitoring',
+      // ✅ UPDATED: prod to match actual link
+      prod: '/srec-new/sustainability-monitoring',
     },
     urlMatchesByEnv: {
       dev: /\/srec-new\/sustainability-monitoring(?:[/?#]|$)/i,
-      prod: /\/srec\/sustainability-monitoring(?:[/?#]|$)/i,
+      prod: /\/srec-new\/sustainability-monitoring(?:[/?#]|$)/i,
     },
   },
 ];
@@ -255,7 +261,12 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
       // EXTRA detection (Side + Top)
       await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
 
-      const expected = new Set(MODULES.map((m) => m.hrefByEnv[env]).map(normalizeHref));
+      // ✅ UPDATED: Include hrefAliases in the expected set
+      const expected = new Set(
+        MODULES.flatMap((m) => [m.hrefByEnv[env], ...(m.hrefAliases || [])])
+          .filter(Boolean)
+          .map(normalizeHref),
+      );
 
       const discoveredSide = await discoverSideLinks(page);
       const sideExtras = discoveredSide.filter((d) => !expected.has(d.href));

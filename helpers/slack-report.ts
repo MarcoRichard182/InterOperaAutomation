@@ -1,8 +1,8 @@
-import { SLACK_WEBHOOK_URL } from '../tests/config/env';
+// helpers/slack-report.ts
 
 function stripAnsi(input: string) {
   // removes \u001b[...m color codes from Playwright/terminal logs
-  return input.replace(/\u001b\[[0-9;]*m/g, '');
+  return (input || '').replace(/\u001b\[[0-9;]*m/g, '');
 }
 
 function compactError(msg: string) {
@@ -20,10 +20,19 @@ function compactError(msg: string) {
  * The caller should provide formatting.
  */
 export async function sendSlackReport(title: string, lines: string[]) {
+  // READ FROM ENV DIRECTLY
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+
+  if (!webhookUrl) {
+    console.warn('[Slack] SLACK_WEBHOOK_URL is not set. Skipping Slack report.');
+    return;
+  }
+
   const bodyLines = lines.map((l) => compactError(l));
   const text = [`*${title}*`, ...bodyLines].join('\n');
 
-  const res = await fetch(SLACK_WEBHOOK_URL, {
+  // Using global fetch (Node 18+ or Playwright environment)
+  const res = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),

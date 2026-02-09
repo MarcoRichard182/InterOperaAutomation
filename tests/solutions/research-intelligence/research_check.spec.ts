@@ -1,4 +1,4 @@
-// tests/solutions/corporate-planning/corporate_check.spec.ts
+// tests/solutions/research-intelligence/research_check.spec.ts
 import { test, expect, Page, Locator } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
@@ -9,69 +9,67 @@ type Module = {
   panelName: string;
   href: string;
   urlMatches: RegExp;
-  hrefAliases?: string[]; // ✅ allow old/alias hrefs for extras detection
+  hrefAliases?: string[];
 };
 
-const SOLUTION_NAME = 'Corporate Planning';
+const SOLUTION_NAME = 'Research Intelligence';
 
 const MODULES: Module[] = [
-  {
-    name: 'Overview',
-    panelName: 'Overview',
-    href: '/corporate/overview',
-    hrefAliases: ['/corporate'], // ✅ old link still exists in UI
-    urlMatches: /\/corporate(?:\/overview)?(?:[/?#]|$)/i, // ✅ accept /corporate and /corporate/overview
+  { 
+    name: 'Overview', 
+    panelName: 'Overview', 
+    href: '/ri/overview', 
+    urlMatches: /\/ri\/overview(?:[/?#]|$)/i 
   },
-  { name: 'Scheduler', panelName: 'Scheduler', href: '/corporate/scheduler', urlMatches: /\/corporate\/scheduler(?:[/?#]|$)/i },
-
-  { name: 'Accounting', panelName: 'Accounting', href: '/corporate/accounting', urlMatches: /\/corporate\/accounting(?:[/?#]|$)/i },
-  { name: 'Finance', panelName: 'Finance', href: '/corporate/finance', urlMatches: /\/corporate\/finance(?:[/?#]|$)/i },
-  { name: 'Asset Management', panelName: 'Assets Management', href: '/corporate/asset-management', urlMatches: /\/corporate\/asset-management(?:[/?#]|$)/i },
-  { name: 'Asset Operations', panelName: 'Assets Operations', href: '/corporate/asset-operations', urlMatches: /\/corporate\/asset-operations(?:[/?#]|$)/i },
-  { name: 'HR', panelName: 'Human Resources (HR)', href: '/corporate/hr', urlMatches: /\/corporate\/hr(?:[/?#]|$)/i },
-  { name: 'REC Management', panelName: 'REC', href: '/corporate/rec', urlMatches: /\/corporate\/rec(?:[/?#]|$)/i },
+  { 
+    name: 'Integrated Intelligence', 
+    panelName: 'Integrated Intelligence', 
+    href: '/ri/integrated-intelligence', 
+    urlMatches: /\/ri\/integrated-intelligence(?:[/?#]|$)/i 
+  },
+  { 
+    name: 'Market Research', 
+    panelName: 'Market Research', 
+    href: '/ri/market-research-new', 
+    urlMatches: /\/ri\/market-research-new(?:[/?#]|$)/i 
+  },
+  { 
+    name: 'E-Mobility', 
+    panelName: 'E-Mobility', 
+    href: '/ri/emobility', 
+    urlMatches: /\/ri\/emobility(?:[/?#]|$)/i 
+  },
+  { 
+    name: 'Scheduler', 
+    panelName: 'Scheduler', 
+    href: '/ri/scheduler', 
+    urlMatches: /\/ri\/scheduler(?:[/?#]|$)/i 
+  },
 ];
 
-function escRx(s?: string) {
-  return String(s ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-function norm(s: string) {
-  return (s ?? '').replace(/\s+/g, ' ').trim();
-}
-function uniq<T>(arr: T[]) {
-  return Array.from(new Set(arr));
-}
+/** * Normalize URLs by stripping query parameters and trailing slashes 
+ * to ensure /path?query=true matches /path 
+ */
 function normalizeHref(href: string): string {
   const raw = (href || '').trim();
   if (!raw) return '';
   try {
-    if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname.replace(/\/+$/, '');
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   } catch {
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   }
 }
-function hrefLocator(page: Page, path: string) {
-  const p = normalizeHref(path);
-  return page
-    .locator(
-      `a[href="${p}"],
-       a[href^="${p}?"],
-       a[href^="${p}#"],
-       a[href$="${p}"],
-       a[href*="${p}?"],
-       a[href*="${p}#"]`,
-    )
-    .first();
-}
-function expectedHrefSet(mods: Module[]) {
-  const all = mods.flatMap((m) => [m.href, ...(m.hrefAliases ?? [])]);
-  return new Set(all.map(normalizeHref).filter(Boolean));
+
+function escRx(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function pushAllMissingAccess(rows: MenuCheckRow[], solutionName: string, modules: Module[], detail = `No access / menu not visible for "${solutionName}" (likely permissions).`) {
-  for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
-  for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
+function norm(s: string) {
+  return (s ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function uniq<T>(arr: T[]) {
+  return Array.from(new Set(arr));
 }
 
 async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
@@ -94,17 +92,6 @@ async function openSolutionPanel(page: Page, solutionName: string, firstModuleHi
 
   const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
   await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
-}
-
-async function ensureSolutionPanelOrMarkAll(page: Page, rows: MenuCheckRow[], solutionName: string, modules: Module[]): Promise<boolean> {
-  try {
-    const hint = modules[0]?.panelName || modules[0]?.name || solutionName;
-    await openSolutionPanel(page, solutionName, hint);
-    return true;
-  } catch (e: any) {
-    pushAllMissingAccess(rows, solutionName, modules, e?.message || String(e));
-    return false;
-  }
 }
 
 async function clickModuleFromPanel(page: Page, panelName: string) {
@@ -130,14 +117,18 @@ async function assertModuleLoaded(page: Page, mod: Module) {
   await expect(page).toHaveURL(mod.urlMatches, { timeout: 25_000 });
 
   const notFound = page.getByText(/404|not found|page not found/i).first();
-  if (await notFound.isVisible().catch(() => false)) throw new Error(`Landed on 404/not-found page for: ${mod.name}`);
+  if (await notFound.isVisible().catch(() => false)) {
+    throw new Error(`Landed on 404/not-found page for: ${mod.name}`);
+  }
 }
 
 async function clickFromTopMenu(page: Page, mod: Module) {
+  const hrefLoc = page.locator(`a[href="${mod.href}"], a[href^="${mod.href}?"], a[href^="${mod.href}#"]`).first();
   const nameRx = new RegExp(`^\\s*${escRx(mod.name)}\\s*$`, 'i');
+
   const target = await firstVisibleLocator(
     [
-      hrefLocator(page, mod.href),
+      hrefLoc,
       page.getByRole('tab', { name: nameRx }).first(),
       page.getByRole('link', { name: nameRx }).first(),
       page.locator('a').filter({ hasText: nameRx }).first(),
@@ -168,17 +159,24 @@ async function discoverLinksInScope(scope: Locator, hrefRx: RegExp) {
 
     items.push({ name: text, href });
   }
+
   const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
   return uniq(items).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
 }
 
 async function discoverSideLinks(page: Page) {
-  return discoverLinksInScope(page.locator('body'), /\/corporate(?:\/|$)/i);
+  // Use /ri prefix for Research Intelligence
+  return discoverLinksInScope(page.locator('body'), /\/ri(?:\/|$)/i);
 }
+
 async function discoverTopLinks(page: Page) {
-  const headerCandidates = [page.locator('header').first(), page.locator('[role="navigation"]').first(), page.locator('nav').first()];
+  const headerCandidates = [
+    page.locator('header').first(), 
+    page.locator('[role="navigation"]').first(), 
+    page.locator('nav').first()
+  ];
   const header = await firstVisibleLocator(headerCandidates as any, 1200);
-  return discoverLinksInScope((header ?? page.locator('body')) as Locator, /\/corporate(?:\/|$)/i);
+  return discoverLinksInScope((header ?? page.locator('body')) as Locator, /\/ri(?:\/|$)/i);
 }
 
 test.describe(`${SOLUTION_NAME} solution checker`, () => {
@@ -189,10 +187,18 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
     try {
       await login(page);
 
-      const ok = await ensureSolutionPanelOrMarkAll(page, rows, SOLUTION_NAME, MODULES);
-      if (!ok) return;
+      // Open Panel
+      try {
+        const hint = MODULES[0]?.panelName || MODULES[0]?.name;
+        await openSolutionPanel(page, SOLUTION_NAME, hint);
+      } catch (e: any) {
+        // If we can't open the panel, we can't test side menu
+        const detail = e?.message || String(e);
+        for (const m of MODULES) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
+        return; 
+      }
 
-      // SIDE
+      // SIDE MENU
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
@@ -205,10 +211,10 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // TOP (ensure we are in corporate by going to Overview)
-      if (!/\/corporate/i.test(page.url())) {
-        await openSolutionPanel(page, SOLUTION_NAME, 'Overview');
-        await clickModuleFromPanel(page, 'Overview');
+      // TOP MENU (ensure we are in RI first)
+      if (!/\/ri\//i.test(page.url())) {
+        await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
+        await clickModuleFromPanel(page, MODULES[0].panelName);
         await assertModuleLoaded(page, MODULES[0]);
       }
 
@@ -223,9 +229,10 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // EXTRAS (Side + Top) — using alias-aware expected set
+      // EXTRAS (Side + Top)
       await openSolutionPanel(page, SOLUTION_NAME, MODULES[0].panelName);
-      const expected = expectedHrefSet(MODULES);
+      
+      const expected = new Set(MODULES.map((m) => normalizeHref(m.href)));
 
       const discoveredSide = await discoverSideLinks(page);
       for (const ex of discoveredSide.filter((d) => !expected.has(d.href))) {
@@ -237,11 +244,11 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         rows.push({ label: `Top menu EXTRA — ${ex.name}`, status: 'ERROR', detail: `Unexpected module link found: ${ex.href}` });
       }
 
-      if (rows.some((r) => r.status === 'ERROR')) throw new Error('Some Corporate Planning navigation checks failed.');
+      if (rows.some((r) => r.status === 'ERROR')) throw new Error('Some Research Intelligence navigation checks failed.');
     } finally {
       const hasError = rows.some((r) => r.status === 'ERROR');
       await sendMenuSlackReport({
-        title: 'Corporate Planning - Navigation Report',
+        title: 'Research Intelligence - Navigation Report', // Corrected Title
         rows,
         mentionUserId: hasError ? '<@U089BQX3Z6F>' : undefined,
         includeErrorDetails: true,

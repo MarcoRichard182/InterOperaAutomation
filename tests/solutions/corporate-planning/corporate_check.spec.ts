@@ -4,19 +4,29 @@ import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
 import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-menu-report';
 
-
-
 type Module = {
-  name: string;          // report label
-  panelName: string;     // UI text in the Corporate panel
-  href: string;          // expected href (for discovery + click)
-  urlMatches: RegExp;    // URL verification
+  name: string;          
+  panelName: string;     
+  href: string;          
+  urlMatches: RegExp;    
+  hrefAliases?: string[]; 
 };
 
 const SOLUTION_NAME = 'Corporate Planning';
 
 const MODULES: Module[] = [
-  { name: 'Overview', panelName: 'Corporate Planning', href: '/corporate', urlMatches: /\/corporate(?:[/?#]|$)/i },
+  { 
+    name: 'Overview', 
+    panelName: 'Overview', 
+    href: '/corporate', 
+    urlMatches: /\/corporate(?:\/overview)?(?:[/?#]|$)/i 
+  },
+  { 
+    name: 'Scheduler', 
+    panelName: 'Scheduler', 
+    href: '/corporate/scheduler', 
+    urlMatches: /\/corporate\/scheduler(?:[/?#]|$)/i 
+  },
   { name: 'Accounting', panelName: 'Accounting', href: '/corporate/accounting', urlMatches: /\/corporate\/accounting(?:[/?#]|$)/i },
   { name: 'Finance', panelName: 'Finance', href: '/corporate/finance', urlMatches: /\/corporate\/finance(?:[/?#]|$)/i },
   { name: 'Asset Management', panelName: 'Assets Management', href: '/corporate/asset-management', urlMatches: /\/corporate\/asset-management(?:[/?#]|$)/i },
@@ -25,55 +35,19 @@ const MODULES: Module[] = [
   { name: 'REC Management', panelName: 'REC', href: '/corporate/rec', urlMatches: /\/corporate\/rec(?:[/?#]|$)/i },
 ];
 
-function pushAllMissingAccess(
-  rows: MenuCheckRow[],
-  solutionName: string,
-  modules: Module[],
-  detail = `No access / menu not visible for "${solutionName}" (likely permissions).`,
-) {
-  for (const m of modules) rows.push({ label: `Side menu — ${m.name}`, status: 'ERROR', detail });
-  for (const m of modules) rows.push({ label: `Top menu — ${m.name}`, status: 'ERROR', detail });
-}
-
-// ✅ FIX: make openSolutionPanel take solutionName + hint so it's not "undefined" / wrong-args
-async function openSolutionPanel(page: Page, solutionName: string, firstModuleHint: string) {
-  await waitForAppIdle(page);
-
-  const solRx = new RegExp(`^\\s*${escRx(solutionName)}\\s*$`, 'i');
-  const candidates = [
-    page.getByRole('button', { name: solRx }).first(),
-    page.getByRole('link', { name: solRx }).first(),
-    page.locator('button').filter({ hasText: solRx }).first(),
-    page.locator('a').filter({ hasText: solRx }).first(),
-    page.getByText(solRx).first(),
-  ];
-
-  const sol = await firstVisibleLocator(candidates as any, 2500);
-  if (!sol) throw new Error(`Side menu "${solutionName}" not found (maybe permissions)`);
-
-  await sol.scrollIntoViewIfNeeded().catch(() => {});
-  await sol.click({ force: true });
-
-  const hint = page.getByText(new RegExp(escRx(firstModuleHint), 'i')).first();
-  await expect(hint, `Solution panel "${solutionName}" did not open`).toBeVisible({ timeout: 10_000 });
-}
-
-async function ensureSolutionPanelOrMarkAll(
-  page: Page,
-  rows: MenuCheckRow[],
-  solutionName: string,
-  modules: Module[],
-): Promise<boolean> {
+/** * NEW: Normalize URLs by stripping query parameters and trailing slashes 
+ * to ensure /path?query=true matches /path 
+ */
+function normalizeHref(href: string): string {
+  const raw = (href || '').trim();
+  if (!raw) return '';
   try {
-    const hint = modules[0]?.panelName || modules[0]?.name || solutionName;
-    await openSolutionPanel(page, solutionName, hint);
-    return true;
-  } catch (e: any) {
-    pushAllMissingAccess(rows, solutionName, modules, e?.message || String(e));
-    return false;
+    // Strip query strings (?) and hashes (#) then remove trailing slash
+    return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
+  } catch {
+    return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   }
 }
-
 
 function escRx(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -89,7 +63,6 @@ function uniq<T>(arr: T[]) {
 
 async function openCorporatePanel(page: Page) {
   await waitForAppIdle(page);
-
   const solRx = new RegExp(`^\\s*${escRx(SOLUTION_NAME)}\\s*$`, 'i');
   const candidates = [
     page.getByRole('button', { name: solRx }).first(),
@@ -105,14 +78,12 @@ async function openCorporatePanel(page: Page) {
   await sol.scrollIntoViewIfNeeded().catch(() => {});
   await sol.click({ force: true });
 
-  // Make sure panel is really open: one known module should be visible
   const hint = page.getByText(new RegExp(escRx(MODULES[1].panelName), 'i')).first();
   await expect(hint, 'Corporate panel did not open / module list not visible').toBeVisible({ timeout: 10_000 });
 }
 
 async function clickModuleFromPanel(page: Page, panelName: string) {
   const rx = new RegExp(`^\\s*${escRx(panelName)}\\s*$`, 'i');
-
   const candidates = [
     page.getByRole('button', { name: rx }).first(),
     page.getByRole('link', { name: rx }).first(),
@@ -130,7 +101,6 @@ async function clickModuleFromPanel(page: Page, panelName: string) {
 
 async function assertModuleLoaded(page: Page, mod: Module) {
   await waitForAppIdle(page);
-
   await expect(page).not.toHaveURL(/\/login/i, { timeout: 10_000 });
   await expect(page).toHaveURL(mod.urlMatches, { timeout: 20_000 });
 
@@ -140,14 +110,8 @@ async function assertModuleLoaded(page: Page, mod: Module) {
   }
 }
 
-/**
- * Discover corporate module links visible on the page.
- * We use href pattern "/corporate" to detect modules that exist (including unwanted extras).
- */
 async function discoverCorporateLinks(page: Page) {
-  // Any visible anchors that navigate to /corporate...
   const anchors = page.locator('a[href^="/corporate"], a[href*="/corporate"]').filter({ hasText: /./ });
-
   const count = await anchors.count().catch(() => 0);
   const items: { name: string; href: string }[] = [];
 
@@ -156,22 +120,20 @@ async function discoverCorporateLinks(page: Page) {
     const visible = await a.isVisible().catch(() => false);
     if (!visible) continue;
 
-    const href = (await a.getAttribute('href').catch(() => '')) || '';
+    const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
+    // UPDATED: Normalize the discovered href
+    const href = normalizeHref(hrefRaw);
     const text = norm(await a.innerText().catch(() => ''));
     if (!href || !text) continue;
 
-    // Reduce noise: only keep items that look like module menu items
-    // (You can loosen/tighten later.)
     items.push({ name: text, href });
   }
 
-  // Dedup by href+name
   const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
   return uniq(items.map((x) => ({ ...x }))).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
 }
 
 async function clickFromTopMenu(page: Page, mod: Module) {
-  // Try to click using href first (most stable)
   const hrefLoc = page.locator(`a[href="${mod.href}"], a[href^="${mod.href}?"], a[href^="${mod.href}#"]`).first();
   const nameRx = new RegExp(`^\\s*${escRx(mod.name)}\\s*$`, 'i');
 
@@ -185,8 +147,7 @@ async function clickFromTopMenu(page: Page, mod: Module) {
     2000,
   );
 
-  if (!target) throw new Error(`Top menu item not found for: ${mod.name} (${mod.href})`);
-
+  if (!target) throw new Error(`Top menu item not found for: ${mod.name}`);
   await target.scrollIntoViewIfNeeded().catch(() => {});
   await target.click({ force: true });
 }
@@ -194,16 +155,12 @@ async function clickFromTopMenu(page: Page, mod: Module) {
 test.describe(`${SOLUTION_NAME} solution checker`, () => {
   test('modules accessible via side menu + top menu, and detect unexpected modules', async ({ page }) => {
     test.setTimeout(220_000);
-
     const rows: MenuCheckRow[] = [];
 
     try {
       await login(page);
-      const ok = await ensureSolutionPanelOrMarkAll(page, rows, SOLUTION_NAME, MODULES);
-      if (!ok) return;
-      // -----------------------
-      // SIDE MENU (panel)
-      // -----------------------
+      
+      // SIDE MENU checks
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
@@ -216,12 +173,8 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // -----------------------
-      // TOP MENU
-      // (make sure we are on /corporate first)
-      // -----------------------
+      // TOP MENU checks
       if (!/\/corporate/i.test(page.url())) {
-        // go to Overview first so top menu should exist (if the app has it)
         await openCorporatePanel(page);
         await clickModuleFromPanel(page, MODULES[0].panelName);
         await assertModuleLoaded(page, MODULES[0]);
@@ -238,15 +191,12 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // -----------------------
-      // DETECT UNEXPECTED MODULES (extras)
-      // We discover visible /corporate links and flag those not in our expected href list.
-      // -----------------------
-      // Open the panel so module list is visible, which helps discovery pick up menu links.
+      // EXTRA detection (Side + Top)
       await openCorporatePanel(page);
 
       const discovered = await discoverCorporateLinks(page);
-      const expectedHrefs = new Set(MODULES.map((m) => m.href));
+      // UPDATED: Ensure expected hrefs are also normalized for comparison
+      const expectedHrefs = new Set(MODULES.map((m) => normalizeHref(m.href)));
 
       const extras = discovered.filter((d) => d.href.startsWith('/corporate') && !expectedHrefs.has(d.href));
       for (const ex of extras) {
@@ -257,7 +207,6 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         });
       }
 
-      // Fail after loops (Slack still sends in finally)
       if (rows.some((r) => r.status === 'ERROR')) {
         throw new Error('Some Corporate Planning navigation checks failed.');
       }
@@ -266,7 +215,7 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
       await sendMenuSlackReport({
         title: 'Corporate Planning - Navigation Report',
         rows,
-        mentionUserId: hasError ? '<@U089BQX3Z6F>' : undefined, // tag only when ERROR
+        mentionUserId: hasError ? '<@U089BQX3Z6F>' : undefined, 
         includeErrorDetails: true,
       });
     }

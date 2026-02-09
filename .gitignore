@@ -6,3 +6,4 @@ storage/
 *.log
 .env
 .env*
+.env.client
