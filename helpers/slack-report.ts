@@ -1,5 +1,7 @@
 // helpers/slack-report.ts
 
+// NOTE: The import line that caused the error is removed.
+
 function stripAnsi(input: string) {
   // removes \u001b[...m color codes from Playwright/terminal logs
   return (input || '').replace(/\u001b\[[0-9;]*m/g, '');
