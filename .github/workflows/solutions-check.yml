@@ -1,0 +1,75 @@
+name: Check Solutions (Dev & Prod)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # 7:00 AM SGT (Mon-Fri) => 23:00 UTC (Sun-Thu)
+    - cron: "0 23 * * 0-4"
+    # 12:00 PM SGT (Daily) => 04:00 UTC
+    - cron: "0 4 * * *"
+    # 3:00 PM SGT (Mon-Fri) => 07:00 UTC
+    - cron: "0 7 * * 1-5"
+
+jobs:
+  # ------------------------------------------------------------------
+  # JOB 1: DEV Environment
+  # ------------------------------------------------------------------
+  solutions_dev:
+    name: Dev Solutions Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      # Create .env.dev from Secret
+      - name: Create Dev Env File
+        run: printf "%s" "${{ secrets.ENVDEV }}" > .env.dev
+
+      # Run Dev Checks
+      - name: Run Dev Combined
+        run: npm run test:dev:combined
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-report
+          path: playwright-report
+
+  # ------------------------------------------------------------------
+  # JOB 2: PROD Environment
+  # ------------------------------------------------------------------
+  solutions_prod:
+    name: Prod Solutions Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Run in parallel with Dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      # Create .env.prod from Secret
+      - name: Create Prod Env File
+        run: printf "%s" "${{ secrets.ENVPROD }}" > .env.prod
+
+      # Run Prod Checks
+      - name: Run Prod Combined
+        run: npm run test:prod:combined
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-report
+          path: playwright-report

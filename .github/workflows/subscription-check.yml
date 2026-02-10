@@ -1,0 +1,36 @@
+name: Check Client Subscriptions
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 8:00 AM SGT (Daily) => 00:00 UTC
+    - cron: "0 0 * * *"
+
+jobs:
+  subscription_check:
+    name: Client Subscription Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps
+
+      # Create .env.client from Secret
+      - name: Create Client Env File
+        run: printf "%s" "${{ secrets.ENVCLIENT }}" > .env.client
+
+      # Run Subscription Checks
+      - name: Run Subscription Test
+        run: npm run test:subscription
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-report
+          path: playwright-report
