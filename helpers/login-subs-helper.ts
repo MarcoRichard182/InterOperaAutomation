@@ -1,7 +1,7 @@
 import { expect, Page } from '@playwright/test';
 
 const BASE = (process.env.BASE_URL ?? 'https://nexus-prod.interopera.co').replace(/\/+$/, '');
-const DEFAULT_PASS = (process.env.USER_PASSWORD ?? 'Test1234!').trim();
+const DEFAULT_PASS = (process.env.USER_PASSWORD ?? '').trim();
 
 function now() {
   return new Date().toISOString().replace(/[:.]/g, '-');
