@@ -1,15 +1,12 @@
-// tests/config/module-registry.ts
 export type ModuleDef = {
-  name: string;      // The text to look for in the top menu
-  panelName: string; // The text to look for in the side panel
-  href: string;      // The expected URL
-  urlMatch: RegExp;  // Regex for verification
+  name: string;      
+  panelName: string; 
+  href: string;      
+  urlMatch: RegExp;  
 };
 
 export const MODULE_REGISTRY: Record<string, ModuleDef> = {
-  // --- ORIGINAL KEYS (Do not modify/remove to keep other tests working) ---
-  
-  // Corporate
+  // --- ORIGINAL KEYS ---
   Accounting: {
     name: 'Accounting',
     panelName: 'Accounting',
@@ -46,8 +43,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/corporate/proprietary-assets',
     urlMatch: /\/corporate\/proprietary-assets/i,
   },
-
-  // RI
   'Integrated Intelligence': {
     name: 'Integrated Intelligence',
     panelName: 'Integrated Intelligence',
@@ -60,8 +55,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/ri/market-research-new',
     urlMatch: /\/ri\/market-research/i,
   },
-
-  // SMM
   'Sales & Strategic Partnerships': {
     name: 'Sales & Strategic Partnerships',
     panelName: 'Sales & Strategic Partnerships',
@@ -74,8 +67,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/smm/products',
     urlMatch: /\/smm\/products/i,
   },
-
-  // ESG
   Compliance: {
     name: 'Compliance',
     panelName: 'Compliance',
@@ -83,10 +74,7 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     urlMatch: /\/srec(-new)?\/compliance/i,
   },
 
-
-  // --- NEW ADDITIONS (For Subscription Checks) ---
-
-  // Home Modules
+  // --- NEW KEYS FOR SUBSCRIPTION CHECK ---
   'AI Hub': {
     name: 'AI Hub',
     panelName: 'AI Hub',
@@ -111,8 +99,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/home/scheduler',
     urlMatch: /\/home\/scheduler/i,
   },
-
-  // Solution Overviews & Schedulers
   'Corporate Overview': {
     name: 'Overview',
     panelName: 'Overview',
@@ -125,7 +111,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/corporate/scheduler',
     urlMatch: /\/corporate\/scheduler/i,
   },
-
   'RI Overview': {
     name: 'Overview',
     panelName: 'Overview',
@@ -138,7 +123,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/ri/scheduler',
     urlMatch: /\/ri\/scheduler/i,
   },
-
   'SMM Overview': {
     name: 'Overview',
     panelName: 'Overview',
@@ -151,7 +135,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/smm/scheduler',
     urlMatch: /\/smm\/scheduler/i,
   },
-
   'ESG Overview': {
     name: 'Overview',
     panelName: 'Overview',
@@ -164,8 +147,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/srec-new/scheduler',
     urlMatch: /\/srec(-new)?\/scheduler/i,
   },
-
-  // Variants / Aliases (Mapping user's specific names to existing modules)
   'Asset Operations (Real estate)': {
     name: 'Asset Operations',
     panelName: 'Assets Operations',
@@ -178,7 +159,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/corporate/asset-operations',
     urlMatch: /\/corporate\/asset-operations/i,
   },
-
   'Integrated research (Real Estate)': {
     name: 'Integrated Intelligence',
     panelName: 'Integrated Intelligence',
@@ -197,7 +177,6 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/ri/integrated-intelligence',
     urlMatch: /\/ri\/integrated-intelligence/i,
   },
-
   'Market Research (Real estate)': {
     name: 'Market Research',
     panelName: 'Market Research',
@@ -216,15 +195,12 @@ export const MODULE_REGISTRY: Record<string, ModuleDef> = {
     href: '/ri/market-research-new',
     urlMatch: /\/ri\/market-research/i,
   },
-  
-  // User list had "Sales & Strategic Partnership" (singular), registry had "Partnerships" (plural)
   'Sales & Strategic Partnership': {
     name: 'Sales & Strategic Partnerships',
     panelName: 'Sales & Strategic Partnerships',
     href: '/smm/sales-strategic-partnership',
     urlMatch: /\/smm\/sales-strategic-partnership/i,
   },
-  // User list had "Product management" (lowercase m), registry had "Management"
   'Product management': {
     name: 'Product Management',
     panelName: 'Product Management',

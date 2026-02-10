@@ -1,4 +1,3 @@
-// tests/home/home_check.spec.ts
 import { test, expect, Page, Locator } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
@@ -6,8 +5,8 @@ import { sendMenuSlackReport, type MenuCheckRow } from '../../../helpers/slack-m
 
 type HomeModule = {
   name: string;
-  slug: string; // url segment: /home/<slug>
-  heading?: RegExp; // page loaded signal
+  slug: string;
+  heading?: RegExp;
 };
 
 const HOME_MODULES: HomeModule[] = [
@@ -31,7 +30,6 @@ function normalizeHref(href: string): string {
   if (!raw) return '';
   try {
     if (/^https?:\/\//i.test(raw)) return new URL(raw).pathname;
-    // Strip query parameters and trailing slashes for cleaner comparison
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   } catch {
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
@@ -40,7 +38,6 @@ function normalizeHref(href: string): string {
 
 async function openHomePanel(page: Page) {
   await waitForAppIdle(page);
-
   const homeCandidates = [
     page.getByRole('link', { name: /^Home$/i }).first(),
     page.getByRole('button', { name: /^Home$/i }).first(),
@@ -48,13 +45,10 @@ async function openHomePanel(page: Page) {
     page.locator('button').filter({ hasText: /^Home$/i }).first(),
     page.getByText(/^Home$/i).first(),
   ];
-
   const homeItem = await firstVisibleLocator(homeCandidates as any, 1500);
   if (!homeItem) throw new Error('Left sidebar "Home" item not found');
-
   await homeItem.scrollIntoViewIfNeeded().catch(() => {});
   await homeItem.click({ force: true });
-
   const aiHubBtn = page.getByRole('button', { name: /^AI Hub$/i }).first();
   await expect(aiHubBtn, 'Home panel did not open (AI Hub not visible)').toBeVisible({ timeout: 10_000 });
 }
@@ -62,7 +56,6 @@ async function openHomePanel(page: Page) {
 async function clickModuleFromHomePanel(page: Page, moduleName: string) {
   const rx = new RegExp(`^\\s*${escRx(moduleName)}\\s*$`, 'i');
   const btn = page.getByRole('button', { name: rx }).first();
-
   await expect(btn, `Module button not visible in Home panel: ${moduleName}`).toBeVisible({ timeout: 10_000 });
   await btn.scrollIntoViewIfNeeded().catch(() => {});
   await btn.click({ force: true });
@@ -71,7 +64,6 @@ async function clickModuleFromHomePanel(page: Page, moduleName: string) {
 async function clickModuleFromTopBar(page: Page, mod: HomeModule) {
   const linkByHref = page.locator(`a[href*="/home/${mod.slug}"]`).first();
   const rx = new RegExp(`^\\s*${escRx(mod.name)}\\s*$`, 'i');
-
   const target = await firstVisibleLocator(
     [
       linkByHref,
@@ -82,30 +74,24 @@ async function clickModuleFromTopBar(page: Page, mod: HomeModule) {
     ] as any,
     1500,
   );
-
   if (!target) throw new Error(`Top bar module not found: ${mod.name}`);
-
   await target.scrollIntoViewIfNeeded().catch(() => {});
   await target.click({ force: true });
 }
 
 async function assertHomeModuleLoaded(page: Page, mod: HomeModule) {
   await waitForAppIdle(page);
-
   await expect(page, 'Unexpectedly navigated to login page').not.toHaveURL(/\/login/i, { timeout: 10_000 });
-
   await expect(page, `URL did not include /home/${mod.slug}`).toHaveURL(
     new RegExp(`/home/${escRx(mod.slug)}(?:[/?#]|$)`, 'i'),
     { timeout: 15_000 },
   );
-
   if (mod.heading) {
     const ok =
       (await page.getByRole('heading', { name: mod.heading }).first().isVisible().catch(() => false)) ||
       (await page.getByText(mod.heading).first().isVisible().catch(() => false));
     if (!ok) throw new Error(`Page loaded but expected heading/text not found for module: ${mod.name}`);
   }
-
   const notFound = page.getByText(/404|not found|page not found/i).first();
   if (await notFound.isVisible().catch(() => false)) throw new Error(`Landed on a 404/not-found page for module: ${mod.name}`);
 }
@@ -113,22 +99,17 @@ async function assertHomeModuleLoaded(page: Page, mod: HomeModule) {
 async function discoverLinksInScope(scope: Locator, hrefRx: RegExp) {
   const anchors = scope.locator('a[href]').filter({ hasText: /./ });
   const count = await anchors.count().catch(() => 0);
-
   const items: { name: string; href: string }[] = [];
   for (let i = 0; i < count; i++) {
     const a = anchors.nth(i);
     if (!(await a.isVisible().catch(() => false))) continue;
-
     const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
     const href = normalizeHref(hrefRaw);
     if (!hrefRx.test(href)) continue;
-
     const text = norm(await a.innerText().catch(() => ''));
     if (!href || !text) continue;
-
     items.push({ name: text, href });
   }
-
   const key = (x: { name: string; href: string }) => `${x.href}|||${x.name}`;
   return uniq(items).filter((x, idx, arr) => arr.findIndex((y) => key(y) === key(x)) === idx);
 }
@@ -152,7 +133,6 @@ test.describe('Home solution checker', () => {
     try {
       await login(page);
 
-      // SIDE
       for (const mod of HOME_MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
@@ -165,7 +145,6 @@ test.describe('Home solution checker', () => {
         }
       }
 
-      // TOP
       for (const mod of HOME_MODULES) {
         const label = `Top menu — ${mod.name}`;
         try {
@@ -174,7 +153,6 @@ test.describe('Home solution checker', () => {
             await clickModuleFromHomePanel(page, 'AI Hub');
             await assertHomeModuleLoaded(page, HOME_MODULES[0]);
           }
-
           await clickModuleFromTopBar(page, mod);
           await assertHomeModuleLoaded(page, mod);
           rows.push({ label, status: 'PASS' });
@@ -183,16 +161,12 @@ test.describe('Home solution checker', () => {
         }
       }
 
-      // EXTRA detection (Side + Top)
       await openHomePanel(page);
-
-      // UPDATED: Include both the direct slug and known nested sub-paths to avoid false "EXTRA" reports
       const expected = new Set<string>([
         ...HOME_MODULES.map((m) => `/home/${m.slug}`),
         '/home/ai-hub/scheduler' // Explicitly allow the nested scheduler path
       ]);
 
-      // Side extras: scan whole page for /home/ links (Home panel is visible now)
       const discoveredSide = await discoverLinksInScope(page.locator('body'), /\/home\//i);
       for (const ex of discoveredSide.filter((d) => !expected.has(d.href))) {
         rows.push({
@@ -202,7 +176,6 @@ test.describe('Home solution checker', () => {
         });
       }
 
-      // Top extras
       const discoveredTop = await discoverTopLinks(page);
       for (const ex of discoveredTop.filter((d) => !expected.has(d.href))) {
         rows.push({

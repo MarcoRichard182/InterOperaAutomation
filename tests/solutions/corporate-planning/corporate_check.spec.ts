@@ -1,4 +1,3 @@
-// tests/solutions/corporate-planning/corporate_check.spec.ts
 import { test, expect, Page } from '@playwright/test';
 import { login } from '../../../helpers/login-helper';
 import { waitForAppIdle, firstVisibleLocator } from '../../../helpers/page-utils';
@@ -35,14 +34,10 @@ const MODULES: Module[] = [
   { name: 'REC Management', panelName: 'REC', href: '/corporate/rec', urlMatches: /\/corporate\/rec(?:[/?#]|$)/i },
 ];
 
-/** * NEW: Normalize URLs by stripping query parameters and trailing slashes 
- * to ensure /path?query=true matches /path 
- */
 function normalizeHref(href: string): string {
   const raw = (href || '').trim();
   if (!raw) return '';
   try {
-    // Strip query strings (?) and hashes (#) then remove trailing slash
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
   } catch {
     return raw.split('?')[0].split('#')[0].replace(/\/+$/, '');
@@ -121,7 +116,6 @@ async function discoverCorporateLinks(page: Page) {
     if (!visible) continue;
 
     const hrefRaw = (await a.getAttribute('href').catch(() => '')) || '';
-    // UPDATED: Normalize the discovered href
     const href = normalizeHref(hrefRaw);
     const text = norm(await a.innerText().catch(() => ''));
     if (!href || !text) continue;
@@ -160,7 +154,6 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
     try {
       await login(page);
       
-      // SIDE MENU checks
       for (const mod of MODULES) {
         const label = `Side menu — ${mod.name}`;
         try {
@@ -173,7 +166,6 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // TOP MENU checks
       if (!/\/corporate/i.test(page.url())) {
         await openCorporatePanel(page);
         await clickModuleFromPanel(page, MODULES[0].panelName);
@@ -191,11 +183,8 @@ test.describe(`${SOLUTION_NAME} solution checker`, () => {
         }
       }
 
-      // EXTRA detection (Side + Top)
       await openCorporatePanel(page);
-
       const discovered = await discoverCorporateLinks(page);
-      // UPDATED: Ensure expected hrefs are also normalized for comparison
       const expectedHrefs = new Set(MODULES.map((m) => normalizeHref(m.href)));
 
       const extras = discovered.filter((d) => d.href.startsWith('/corporate') && !expectedHrefs.has(d.href));

@@ -1,4 +1,3 @@
-// tests/config/subscription.ts
 export type SolutionKey = 'home' | 'corporate' | 'ri' | 'smm' | 'srec';
 
 export type ClientSubscription = {
