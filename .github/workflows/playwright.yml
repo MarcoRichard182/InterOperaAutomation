@@ -1,0 +1,49 @@
+name: Playwright Subscription Checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    # 7:00 AM SGT (Mon-Fri) matches 23:00 UTC (Sun-Thu)
+    - cron: "0 23 * * 0-4"
+    # 12:00 PM and 4:00 PM SGT (Mon-Fri) matches 04:00 and 08:00 UTC
+    - cron: "0 4,8 * * 1-5"
+
+jobs:
+  subscription_check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # Increased timeout as subscription checks can be long
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # Create the .env.client file from GitHub Secrets
+      - name: Create Client Env File
+        shell: bash
+        run: |
+          printf "%s" "${{ secrets.ENVCLIENT }}" > .env.client
+
+      # Run the specific Subscription Check test file
+      - name: Run Subscription Checks
+        shell: bash
+        run: |
+          npx dotenv -e .env.client -- npx playwright test tests/subscription/subscription_check.spec.ts
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: subscription-report
+          path: playwright-report
